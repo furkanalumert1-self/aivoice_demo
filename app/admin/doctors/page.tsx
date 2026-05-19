@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { Stethoscope } from "lucide-react";
 
 const doctors = [

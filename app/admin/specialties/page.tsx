@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { Brain } from "lucide-react";
 
 const specialties = [

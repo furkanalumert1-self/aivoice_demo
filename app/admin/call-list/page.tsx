@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { PhoneCall, Plus } from "lucide-react";
 
 const callList = [

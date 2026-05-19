@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { db } from "@/db";
 import { calls, appointments, notifications } from "@/db/schema";
 import { sql, eq, gte, count } from "drizzle-orm";
