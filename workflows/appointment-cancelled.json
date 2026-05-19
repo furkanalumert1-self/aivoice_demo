@@ -1,5 +1,5 @@
 {
-  "name": "appointment-cancelled",
+  "name": "Klinik AI - Randevu İptal Edildi",
   "nodes": [
     {
       "parameters": {
@@ -8,63 +8,58 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "2a3b4c5d-0002-0002-0002-000000000001",
+      "id": "webhook-node",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
+      "typeVersion": 2,
       "position": [240, 300]
     },
     {
       "parameters": {
-        "method": "PATCH",
-        "url": "={{ $env.NEXT_APP_URL }}/api/appointments/{{ $json.id }}",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "status",
-              "value": "iptal"
-            }
-          ]
-        }
+        "operation": "update",
+        "table": "appointments",
+        "updateKey": "id",
+        "columns": "status",
+        "additionalFields": {}
       },
-      "id": "2a3b4c5d-0002-0002-0002-000000000002",
-      "name": "Update Appointment Status",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [460, 300]
+      "id": "update-appointment-node",
+      "name": "Randevu Durumu Güncelle",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [460, 300],
+      "credentials": {
+        "postgres": {
+          "id": "neon-db",
+          "name": "Neon PostgreSQL"
+        }
+      }
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "={{ $env.NEXT_APP_URL }}/api/notifications",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "title",
-              "value": "Randevu İptal Edildi"
-            },
-            {
-              "name": "description",
-              "value": "={{ $json.patientName }} adlı hastanın {{ $json.doctorName }} ile {{ $json.appointmentAt }} tarihindeki randevusu iptal edildi."
-            }
-          ]
-        }
+        "operation": "insert",
+        "table": "notifications",
+        "columns": "title,description,is_read",
+        "additionalFields": {}
       },
-      "id": "2a3b4c5d-0002-0002-0002-000000000003",
-      "name": "Create Admin Notification",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [680, 300]
+      "id": "admin-notification-node",
+      "name": "Admin Bildirimi Oluştur",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [680, 300],
+      "credentials": {
+        "postgres": {
+          "id": "neon-db",
+          "name": "Neon PostgreSQL"
+        }
+      }
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={ \"success\": true }"
+        "responseBody": "={{ { success: true, message: 'İptal işlendi' } }}"
       },
-      "id": "2a3b4c5d-0002-0002-0002-000000000004",
-      "name": "Respond to Webhook",
+      "id": "respond-node",
+      "name": "Yanıt Ver",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [900, 300]
@@ -72,17 +67,18 @@
   ],
   "connections": {
     "Webhook": {
-      "main": [[{ "node": "Update Appointment Status", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Randevu Durumu Güncelle", "type": "main", "index": 0 }]]
     },
-    "Update Appointment Status": {
-      "main": [[{ "node": "Create Admin Notification", "type": "main", "index": 0 }]]
+    "Randevu Durumu Güncelle": {
+      "main": [[{ "node": "Admin Bildirimi Oluştur", "type": "main", "index": 0 }]]
     },
-    "Create Admin Notification": {
-      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    "Admin Bildirimi Oluştur": {
+      "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]]
     }
   },
   "active": true,
-  "settings": { "executionOrder": "v1" },
-  "versionId": "1.0.0",
-  "meta": { "description": "Randevu iptal edildiğinde tetiklenir. Durumu günceller ve admin bildirimi oluşturur." }
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["klinik-ai", "appointment", "cancel"]
 }

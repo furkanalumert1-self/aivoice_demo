@@ -1,57 +1,80 @@
 {
-  "name": "appointment-reminder",
+  "name": "Klinik AI - Randevu Hatırlatıcı",
   "nodes": [
     {
       "parameters": {
         "rule": {
           "interval": [
             {
-              "field": "cronExpression",
-              "expression": "0 8 * * *"
+              "field": "hours",
+              "minutesInterval": 0,
+              "hoursInterval": 1
             }
           ]
         }
       },
-      "id": "3a4b5c6d-0003-0003-0003-000000000001",
-      "name": "Cron (Her Gün 08:00)",
+      "id": "cron-node",
+      "name": "Zamanlanmış Tetikleyici",
       "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1,
+      "typeVersion": 1.2,
       "position": [240, 300]
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "={{ $env.NEXT_APP_URL }}/api/appointments",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "date",
-              "value": "={{ $today.plus({days: 1}).toFormat('yyyy-MM-dd') }}"
-            },
-            {
-              "name": "status",
-              "value": "onaylandi"
-            }
-          ]
-        }
+        "operation": "select",
+        "query": "SELECT * FROM appointments WHERE appointment_at::date = (CURRENT_DATE + INTERVAL '1 day') AND status = 'onaylandi'",
+        "options": {}
       },
-      "id": "3a4b5c6d-0003-0003-0003-000000000002",
-      "name": "Find Tomorrow Appointments",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [460, 300]
+      "id": "find-appointments-node",
+      "name": "Yarınki Randevuları Bul",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [460, 300],
+      "credentials": {
+        "postgres": {
+          "id": "neon-db",
+          "name": "Neon PostgreSQL"
+        }
+      }
     },
     {
       "parameters": {
-        "batchSize": 1,
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-items",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
         "options": {}
       },
-      "id": "3a4b5c6d-0003-0003-0003-000000000003",
-      "name": "Split Into Items",
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 3,
+      "id": "check-appointments-node",
+      "name": "Randevu Var mı?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
       "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const appointments = $input.all();\nconst reminders = [];\n\nfor (const appt of appointments) {\n  const data = appt.json;\n  reminders.push({\n    phone: data.phone,\n    message: `Sayın ${data.patient_name}, yarın saat ${new Date(data.appointment_at).toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit'})} için ${data.doctor_name} ile randevunuz bulunmaktadır. Lütfen zamanında gelmeyi unutmayın.`,\n    patientName: data.patient_name,\n    appointmentAt: data.appointment_at\n  });\n}\n\nreturn reminders.map(r => ({ json: r }));"
+      },
+      "id": "prepare-reminders-node",
+      "name": "Hatırlatıcıları Hazırla",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 200]
     },
     {
       "parameters": {
@@ -60,37 +83,41 @@
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            {
-              "name": "to",
-              "value": "={{ $json.phone }}"
-            },
-            {
-              "name": "message",
-              "value": "Sayın {{ $json.patientName }}, yarın {{ $json.appointmentAt }} tarihinde {{ $json.doctorName }} ile randevunuz bulunmaktadır. Hatırlatmak istedik. Klinik AI"
-            }
+            { "name": "to", "value": "={{ $json.phone }}" },
+            { "name": "message", "value": "={{ $json.message }}" }
           ]
+        },
+        "options": {
+          "ignoreResponseCode": true
         }
       },
-      "id": "3a4b5c6d-0003-0003-0003-000000000004",
-      "name": "Send Reminder",
+      "id": "send-reminder-node",
+      "name": "Hatırlatıcı Gönder (Mock)",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [900, 300]
+      "typeVersion": 4.2,
+      "position": [1120, 200]
     }
   ],
   "connections": {
-    "Cron (Her Gün 08:00)": {
-      "main": [[{ "node": "Find Tomorrow Appointments", "type": "main", "index": 0 }]]
+    "Zamanlanmış Tetikleyici": {
+      "main": [[{ "node": "Yarınki Randevuları Bul", "type": "main", "index": 0 }]]
     },
-    "Find Tomorrow Appointments": {
-      "main": [[{ "node": "Split Into Items", "type": "main", "index": 0 }]]
+    "Yarınki Randevuları Bul": {
+      "main": [[{ "node": "Randevu Var mı?", "type": "main", "index": 0 }]]
     },
-    "Split Into Items": {
-      "main": [[{ "node": "Send Reminder", "type": "main", "index": 0 }]]
+    "Randevu Var mı?": {
+      "main": [
+        [{ "node": "Hatırlatıcıları Hazırla", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Hatırlatıcıları Hazırla": {
+      "main": [[{ "node": "Hatırlatıcı Gönder (Mock)", "type": "main", "index": 0 }]]
     }
   },
   "active": true,
-  "settings": { "executionOrder": "v1" },
-  "versionId": "1.0.0",
-  "meta": { "description": "Her gün sabah 08:00'de çalışır. Yarınki randevuları bulur ve hastalara hatırlatma mesajı gönderir." }
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": ["klinik-ai", "reminder", "cron"]
 }
