@@ -1,0 +1,96 @@
+{
+  "name": "appointment-reminder",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "3a4b5c6d-0003-0003-0003-000000000001",
+      "name": "Cron (Her Gün 08:00)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.NEXT_APP_URL }}/api/appointments",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "date",
+              "value": "={{ $today.plus({days: 1}).toFormat('yyyy-MM-dd') }}"
+            },
+            {
+              "name": "status",
+              "value": "onaylandi"
+            }
+          ]
+        }
+      },
+      "id": "3a4b5c6d-0003-0003-0003-000000000002",
+      "name": "Find Tomorrow Appointments",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "3a4b5c6d-0003-0003-0003-000000000003",
+      "name": "Split Into Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://mock-whatsapp-api.example.com/send",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "name": "message",
+              "value": "Sayın {{ $json.patientName }}, yarın {{ $json.appointmentAt }} tarihinde {{ $json.doctorName }} ile randevunuz bulunmaktadır. Hatırlatmak istedik. Klinik AI"
+            }
+          ]
+        }
+      },
+      "id": "3a4b5c6d-0003-0003-0003-000000000004",
+      "name": "Send Reminder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Cron (Her Gün 08:00)": {
+      "main": [[{ "node": "Find Tomorrow Appointments", "type": "main", "index": 0 }]]
+    },
+    "Find Tomorrow Appointments": {
+      "main": [[{ "node": "Split Into Items", "type": "main", "index": 0 }]]
+    },
+    "Split Into Items": {
+      "main": [[{ "node": "Send Reminder", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "1.0.0",
+  "meta": { "description": "Her gün sabah 08:00'de çalışır. Yarınki randevuları bulur ve hastalara hatırlatma mesajı gönderir." }
+}

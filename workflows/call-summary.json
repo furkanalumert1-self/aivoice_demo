@@ -1,0 +1,135 @@
+{
+  "name": "call-summary",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "call-summary",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "4a5b6c7d-0004-0004-0004-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "complete",
+        "model": "gpt-4o",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "Sen bir tıbbi asistansın. Verilen çağrı transkriptini analiz edip Türkçe kısa bir özet çıkar. Özet şunları içermeli: çağrının amacı, sonuç, randevu alındıysa bilgileri."
+            },
+            {
+              "role": "user",
+              "content": "Aşağıdaki transkripti özetle:\n\n{{ $json.transcript }}"
+            }
+          ]
+        }
+      },
+      "id": "4a5b6c7d-0004-0004-0004-000000000002",
+      "name": "Generate GPT Summary",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_APP_URL }}/api/calls",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "callerPhone",
+              "value": "={{ $('Webhook').item.json.callerPhone }}"
+            },
+            {
+              "name": "durationSeconds",
+              "value": "={{ $('Webhook').item.json.durationSeconds }}"
+            },
+            {
+              "name": "transcript",
+              "value": "={{ $('Webhook').item.json.transcript }}"
+            },
+            {
+              "name": "summary",
+              "value": "={{ $json.message.content }}"
+            },
+            {
+              "name": "cost",
+              "value": "={{ $('Webhook').item.json.cost }}"
+            },
+            {
+              "name": "outcome",
+              "value": "={{ $('Webhook').item.json.outcome }}"
+            }
+          ]
+        }
+      },
+      "id": "4a5b6c7d-0004-0004-0004-000000000003",
+      "name": "Insert Call Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_APP_URL }}/api/notifications",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "title",
+              "value": "Yeni Çağrı Özeti"
+            },
+            {
+              "name": "description",
+              "value": "={{ $('Webhook').item.json.callerPhone }} numarasından çağrı tamamlandı. Özet: {{ $('Generate GPT Summary').item.json.message.content.slice(0, 100) }}..."
+            }
+          ]
+        }
+      },
+      "id": "4a5b6c7d-0004-0004-0004-000000000004",
+      "name": "Create Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"success\": true }"
+      },
+      "id": "4a5b6c7d-0004-0004-0004-000000000005",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Generate GPT Summary", "type": "main", "index": 0 }]]
+    },
+    "Generate GPT Summary": {
+      "main": [[{ "node": "Insert Call Log", "type": "main", "index": 0 }]]
+    },
+    "Insert Call Log": {
+      "main": [[{ "node": "Create Notification", "type": "main", "index": 0 }]]
+    },
+    "Create Notification": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "1.0.0",
+  "meta": { "description": "VAPI çağrısı bittiğinde tetiklenir. GPT-4o ile özet oluşturur, çağrı logunu kaydeder ve bildirim oluşturur." }
+}

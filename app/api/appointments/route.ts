@@ -1,0 +1,49 @@
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/db";
+import { appointments } from "@/db/schema";
+import { desc } from "drizzle-orm";
+
+export async function GET() {
+  try {
+    const records = await db
+      .select()
+      .from(appointments)
+      .orderBy(desc(appointments.createdAt));
+
+    return NextResponse.json(records);
+  } catch (error) {
+    console.error("Get appointments error:", error);
+    return NextResponse.json({ error: "Randevular alınamadı" }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { patientName, phone, doctorName, appointmentAt, status, source } = body;
+
+    if (!patientName || !phone || !appointmentAt) {
+      return NextResponse.json(
+        { error: "Hasta adı, telefon ve randevu tarihi gerekli" },
+        { status: 400 }
+      );
+    }
+
+    const [newAppointment] = await db
+      .insert(appointments)
+      .values({
+        patientName,
+        phone,
+        doctorName: doctorName ?? "Belirtilmedi",
+        appointmentAt: new Date(appointmentAt),
+        status: status ?? "onaylandi",
+        source: source ?? "web",
+      })
+      .returning();
+
+    return NextResponse.json(newAppointment, { status: 201 });
+  } catch (error) {
+    console.error("Create appointment error:", error);
+    return NextResponse.json({ error: "Randevu oluşturulamadı" }, { status: 500 });
+  }
+}
