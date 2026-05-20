@@ -4,6 +4,43 @@ Bu rehber, sistemi Vercel'de canlıya aldıktan sonra nasıl kullanacağınızı
 
 ---
 
+## 0. Veritabanı Migration (İlk Kurulum)
+
+Migration dosyaları `drizzle/` klasöründe bulunur. Production Neon veritabanına uygulamak için **iki yöntem** vardır:
+
+### Yöntem A — Neon SQL Editor (Önerilen)
+
+1. [console.neon.tech](https://console.neon.tech) → Projeniz → **SQL Editor**
+2. Tablolar **ilk kez oluşturuluyorsa** `drizzle/0000_spooky_mesmero.sql` içeriğini yapıştırıp çalıştırın.
+3. Tablolar zaten varsa ama eksik kolon hatası alıyorsanız `drizzle/0001_add_missing_columns.sql` içeriğini yapıştırıp çalıştırın (tüm ifadeler idempotent — güvenle tekrar çalıştırılabilir).
+
+### Yöntem B — Drizzle Push (Local)
+
+Projeyi local'de çalıştırıyorsanız `.env.local` dosyasına `DATABASE_URL` ekleyip:
+
+```bash
+npm run db:push
+```
+
+komutuyla schema'yı doğrudan production DB'ye uygulayabilirsiniz.
+
+### Migration Dosyaları
+
+| Dosya | Açıklama |
+|---|---|
+| `drizzle/0000_spooky_mesmero.sql` | Tüm tabloları sıfırdan oluşturur |
+| `drizzle/0001_add_missing_columns.sql` | Eksik kolonları mevcut tablolara ekler (`ADD COLUMN IF NOT EXISTS`) |
+
+### Schema Özeti
+
+```
+appointments  — hasta randevuları (id, patient_name, phone, doctor_name, appointment_at, status, source)
+calls         — çağrı kayıtları (id, caller_phone, duration_seconds, transcript, summary, cost, outcome, appointment_id, recording_url)
+notifications — sistem bildirimleri (id, title, description, is_read)
+```
+
+---
+
 ## 1. Vercel Dashboard'una Erişim
 
 Projeniz Vercel'e deploy edildikten sonra size özel bir URL oluşturulur:
