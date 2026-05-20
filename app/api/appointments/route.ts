@@ -14,8 +14,9 @@ export async function GET() {
 
     return NextResponse.json(records);
   } catch (error) {
-    console.error("Get appointments error:", error);
-    return NextResponse.json({ error: "Randevular alınamadı" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Get appointments error:", message);
+    return NextResponse.json([], { status: 200 });
   }
 }
 

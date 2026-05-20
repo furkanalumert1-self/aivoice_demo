@@ -7,55 +7,70 @@ import { Phone, Calendar, Clock, DollarSign, XCircle, Bell } from "lucide-react"
 import { formatDuration } from "@/lib/utils";
 import Link from "next/link";
 
+const emptyStats = {
+  todayCallCount: 0,
+  aiAppointmentCount: 0,
+  avgDuration: 0,
+  totalCost: "0.00",
+  cancelledCount: 0,
+  recentCalls: [] as typeof calls.$inferSelect[],
+  unreadNotifications: [] as typeof notifications.$inferSelect[],
+};
+
 async function getStats() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-  const [todayCalls] = await db
-    .select({ count: count() })
-    .from(calls)
-    .where(gte(calls.createdAt, today));
+    const [todayCalls] = await db
+      .select({ count: count() })
+      .from(calls)
+      .where(gte(calls.createdAt, today));
 
-  const [aiAppointments] = await db
-    .select({ count: count() })
-    .from(appointments)
-    .where(eq(appointments.source, "voice_agent"));
+    const [aiAppointments] = await db
+      .select({ count: count() })
+      .from(appointments)
+      .where(eq(appointments.source, "voice_agent"));
 
-  const avgDurationResult = await db
-    .select({ avg: sql<number>`avg(${calls.durationSeconds})` })
-    .from(calls);
+    const avgDurationResult = await db
+      .select({ avg: sql<number>`avg(${calls.durationSeconds})` })
+      .from(calls);
 
-  const totalCostResult = await db
-    .select({ total: sql<number>`sum(cast(${calls.cost} as numeric))` })
-    .from(calls);
+    const totalCostResult = await db
+      .select({ total: sql<number>`sum(cast(${calls.cost} as numeric))` })
+      .from(calls);
 
-  const [cancelledAppointments] = await db
-    .select({ count: count() })
-    .from(appointments)
-    .where(eq(appointments.status, "iptal"));
+    const [cancelledAppointments] = await db
+      .select({ count: count() })
+      .from(appointments)
+      .where(eq(appointments.status, "iptal"));
 
-  const recentCalls = await db
-    .select()
-    .from(calls)
-    .orderBy(sql`${calls.createdAt} desc`)
-    .limit(5);
+    const recentCalls = await db
+      .select()
+      .from(calls)
+      .orderBy(sql`${calls.createdAt} desc`)
+      .limit(5);
 
-  const unreadNotifications = await db
-    .select()
-    .from(notifications)
-    .where(eq(notifications.isRead, false))
-    .orderBy(sql`${notifications.createdAt} desc`)
-    .limit(5);
+    const unreadNotifications = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.isRead, false))
+      .orderBy(sql`${notifications.createdAt} desc`)
+      .limit(5);
 
-  return {
-    todayCallCount: todayCalls.count,
-    aiAppointmentCount: aiAppointments.count,
-    avgDuration: Math.round(avgDurationResult[0]?.avg ?? 0),
-    totalCost: Number(totalCostResult[0]?.total ?? 0).toFixed(2),
-    cancelledCount: cancelledAppointments.count,
-    recentCalls,
-    unreadNotifications,
-  };
+    return {
+      todayCallCount: todayCalls.count,
+      aiAppointmentCount: aiAppointments.count,
+      avgDuration: Math.round(avgDurationResult[0]?.avg ?? 0),
+      totalCost: Number(totalCostResult[0]?.total ?? 0).toFixed(2),
+      cancelledCount: cancelledAppointments.count,
+      recentCalls,
+      unreadNotifications,
+    };
+  } catch (error) {
+    console.error("Dashboard stats error:", error);
+    return emptyStats;
+  }
 }
 
 export default async function AdminPage() {

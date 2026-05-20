@@ -7,10 +7,18 @@ import { formatDateTime, formatTime, statusLabels, statusColors, sourceLabels } 
 import { Calendar, User } from "lucide-react";
 
 export default async function AppointmentsPage() {
-  const appointmentRecords = await db
-    .select()
-    .from(appointments)
-    .orderBy(sql`${appointments.appointmentAt} desc`);
+  let appointmentRecords: typeof appointments.$inferSelect[] = [];
+  let dbError = false;
+
+  try {
+    appointmentRecords = await db
+      .select()
+      .from(appointments)
+      .orderBy(sql`${appointments.appointmentAt} desc`);
+  } catch (error) {
+    console.error("Appointments fetch error:", error);
+    dbError = true;
+  }
 
   return (
     <div className="space-y-6">
@@ -18,6 +26,14 @@ export default async function AppointmentsPage() {
         <h1 className="text-2xl font-bold text-gray-900">Randevu Kayıtları</h1>
         <p className="text-sm text-gray-500 mt-1">Tüm hasta randevuları</p>
       </div>
+
+      {dbError && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Veritabanı şeması güncellenmesi gerekiyor. Neon Console&apos;da{" "}
+          <code className="font-mono text-xs bg-amber-100 px-1 rounded">drizzle/0001_add_missing_columns.sql</code>{" "}
+          dosyasını çalıştırın.
+        </div>
+      )}
 
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -36,7 +52,7 @@ export default async function AppointmentsPage() {
               {appointmentRecords.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
-                    Henüz randevu kaydı bulunmuyor
+                    {dbError ? "Veritabanı hatası — şema güncellenmesi gerekiyor" : "Henüz randevu kaydı bulunmuyor"}
                   </td>
                 </tr>
               ) : (

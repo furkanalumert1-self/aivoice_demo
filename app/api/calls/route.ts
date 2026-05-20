@@ -14,7 +14,9 @@ export async function GET() {
 
     return NextResponse.json(records);
   } catch (error) {
-    console.error("Get calls error:", error);
-    return NextResponse.json({ error: "Çağrılar alınamadı" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Get calls error:", message);
+    // Return empty array instead of 500 so UI renders gracefully
+    return NextResponse.json([], { status: 200 });
   }
 }

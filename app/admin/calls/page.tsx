@@ -8,10 +8,18 @@ import { Phone, Download, ExternalLink } from "lucide-react";
 import Link from "next/link";
 
 export default async function CallsPage() {
-  const callRecords = await db
-    .select()
-    .from(calls)
-    .orderBy(sql`${calls.createdAt} desc`);
+  let callRecords: typeof calls.$inferSelect[] = [];
+  let dbError = false;
+
+  try {
+    callRecords = await db
+      .select()
+      .from(calls)
+      .orderBy(sql`${calls.createdAt} desc`);
+  } catch (error) {
+    console.error("Calls fetch error:", error);
+    dbError = true;
+  }
 
   return (
     <div className="space-y-6">
@@ -19,6 +27,14 @@ export default async function CallsPage() {
         <h1 className="text-2xl font-bold text-gray-900">Çağrı Kayıtları</h1>
         <p className="text-sm text-gray-500 mt-1">AI asistan tarafından işlenen tüm çağrılar</p>
       </div>
+
+      {dbError && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Veritabanı şeması güncellenmesi gerekiyor. Neon Console&apos;da{" "}
+          <code className="font-mono text-xs bg-amber-100 px-1 rounded">drizzle/0001_add_missing_columns.sql</code>{" "}
+          dosyasını çalıştırın.
+        </div>
+      )}
 
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -38,7 +54,7 @@ export default async function CallsPage() {
               {callRecords.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
-                    Henüz çağrı kaydı bulunmuyor
+                    {dbError ? "Veritabanı hatası — şema güncellenmesi gerekiyor" : "Henüz çağrı kaydı bulunmuyor"}
                   </td>
                 </tr>
               ) : (
