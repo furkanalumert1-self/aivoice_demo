@@ -8,6 +8,13 @@
       "when": 1779261565100,
       "tag": "0000_spooky_mesmero",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779392532587,
+      "tag": "0001_brave_garia",
+      "breakpoints": true
     }
   ]
 }

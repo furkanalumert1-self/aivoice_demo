@@ -75,7 +75,7 @@ export function RecentAppointmentsTable({ appointments, compact = false }: Appoi
                   </div>
                   <div>
                     <p className="font-medium text-gray-900">{appt.patientName ?? "-"}</p>
-                    <p className="text-xs text-gray-400">{appt.phone ?? ""}</p>
+                    <p className="text-xs text-gray-400">{appt.patientPhone ?? ""}</p>
                   </div>
                 </div>
               </td>

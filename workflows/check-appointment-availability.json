@@ -1,0 +1,43 @@
+{
+  "name": "Klinik AI - Randevu Uygunluk Kontrolü",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "check-availability", "responseMode": "responseNode", "options": {} },
+      "id": "webhook-node", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst toolCallList = body?.message?.toolCallList || [];\nconst toolCall = toolCallList[0] || {};\nconst toolCallId = toolCall.id || 'unknown';\nlet args = {};\ntry { args = JSON.parse(toolCall.function?.arguments || '{}'); } catch(e) { args = {}; }\nreturn [{ json: { toolCallId, doctorName: args.doctorName || '', preferredDate: args.preferredDate || '', preferredTime: args.preferredTime || '' } }];"
+      },
+      "id": "extract-args", "name": "Argümanları Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT a.id, a.appointment_date, a.appointment_time, a.patient_name FROM appointments a WHERE a.doctor_name ILIKE '%' || '{{ $json.doctorName }}' || '%' AND a.appointment_date = '{{ $json.preferredDate }}' AND a.status != 'iptal' ORDER BY a.appointment_time",
+        "options": {}
+      },
+      "id": "check-conflicts", "name": "Çakışmaları Kontrol Et", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [680, 300],
+      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const toolCallId = $('Argümanları Çıkar').first().json.toolCallId;\nconst doctorName = $('Argümanları Çıkar').first().json.doctorName;\nconst preferredDate = $('Argümanları Çıkar').first().json.preferredDate;\nconst preferredTime = $('Argümanları Çıkar').first().json.preferredTime;\nconst conflicts = $input.all().map(i => i.json).filter(r => r.id);\n\nif (conflicts.length === 0) {\n  return [{ json: { toolCallId, result: `${doctorName} doktoru ${preferredDate} tarihinde ${preferredTime || '09:00-18:00 saatleri arasında'} müsait. Randevu oluşturabilirsiniz.` } }];\n}\n\nconst bookedTimes = conflicts.map(c => c.appointment_time).join(', ');\nreturn [{ json: { toolCallId, result: `${doctorName} doktorunun ${preferredDate} tarihinde şu saatleri dolu: ${bookedTimes}. Farklı bir saat veya tarih tercih eder misiniz?` } }];"
+      },
+      "id": "format-response", "name": "Yanıt Formatla", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [900, 300]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ { results: [{ toolCallId: $json.toolCallId, result: $json.result }] } }}" },
+      "id": "respond-node", "name": "Yanıt Ver", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Argümanları Çıkar", "type": "main", "index": 0 }]] },
+    "Argümanları Çıkar": { "main": [[{ "node": "Çakışmaları Kontrol Et", "type": "main", "index": 0 }]] },
+    "Çakışmaları Kontrol Et": { "main": [[{ "node": "Yanıt Formatla", "type": "main", "index": 0 }]] },
+    "Yanıt Formatla": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "tags": ["klinik-ai", "availability", "vapi"]
+}

@@ -1,0 +1,62 @@
+{
+  "name": "Klinik AI - Günlük Analitik",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 7 * * *" }]
+        }
+      },
+      "id": "schedule-trigger", "name": "Zamanlayıcı", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.1, "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as call_count, AVG(duration) as avg_duration, COALESCE(SUM(cost::numeric), 0) as total_cost FROM call_logs WHERE created_at::date = CURRENT_DATE",
+        "options": {}
+      },
+      "id": "query-call-stats", "name": "Arama İstatistikleri", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [460, 300],
+      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*) as total, COUNT(CASE WHEN status = 'iptal' THEN 1 END) as cancelled, COUNT(CASE WHEN source = 'voice_agent' THEN 1 END) as ai_booked FROM appointments WHERE created_at::date = CURRENT_DATE",
+        "options": {}
+      },
+      "id": "query-appointment-stats", "name": "Randevu İstatistikleri", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [460, 500],
+      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const callStats = $('Arama İstatistikleri').first().json;\nconst apptStats = $('Randevu İstatistikleri').first().json;\n\nconst callCount = parseInt(callStats.call_count || 0);\nconst avgDuration = parseFloat(callStats.avg_duration || 0).toFixed(0);\nconst totalCost = parseFloat(callStats.total_cost || 0).toFixed(2);\nconst totalAppts = parseInt(apptStats.total || 0);\nconst cancelledAppts = parseInt(apptStats.cancelled || 0);\nconst aiBooked = parseInt(apptStats.ai_booked || 0);\n\nconst today = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });\nconst summary = `Günlük Rapor - ${today}:\\n- Toplam arama: ${callCount}\\n- Ort. süre: ${avgDuration} sn\\n- AI maliyeti: $${totalCost}\\n- Toplam randevu: ${totalAppts}\\n- İptal edilen: ${cancelledAppts}\\n- AI ile alınan: ${aiBooked}`;\n\nreturn [{ json: { summary, callCount, avgDuration, totalCost, totalAppts, cancelledAppts, aiBooked, today } }];"
+      },
+      "id": "combine-stats", "name": "İstatistikleri Birleştir", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO notifications (title, description, is_read) VALUES ('Günlük Özet Raporu', '{{ $json.summary }}', false)",
+        "options": {}
+      },
+      "id": "insert-daily-report", "name": "Günlük Rapor Kaydet", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [900, 400],
+      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
+    }
+  ],
+  "connections": {
+    "Zamanlayıcı": {
+      "main": [
+        [
+          { "node": "Arama İstatistikleri", "type": "main", "index": 0 },
+          { "node": "Randevu İstatistikleri", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Arama İstatistikleri": { "main": [[{ "node": "İstatistikleri Birleştir", "type": "main", "index": 0 }]] },
+    "Randevu İstatistikleri": { "main": [[{ "node": "İstatistikleri Birleştir", "type": "main", "index": 1 }]] },
+    "İstatistikleri Birleştir": { "main": [[{ "node": "Günlük Rapor Kaydet", "type": "main", "index": 0 }]] }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "tags": ["klinik-ai", "analytics", "cron"]
+}

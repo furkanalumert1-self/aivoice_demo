@@ -2,13 +2,22 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { appointments } from "@/db/schema";
+import { appointments, aiActions } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const params = body?.message?.toolCallList?.[0]?.function?.parameters ?? body;
+    const toolCall = body?.message?.toolCallList?.[0];
+    const toolCallId = toolCall?.id ?? "unknown";
+
+    let params: Record<string, string> = {};
+    try {
+      params = JSON.parse(toolCall?.function?.arguments ?? "{}");
+    } catch {
+      params = toolCall?.function?.parameters ?? body;
+    }
+
     const { appointmentId, phone, newDate, newTime, doctorName } = params;
 
     if (!newDate || !newTime) {
@@ -25,7 +34,10 @@ export async function POST(req: NextRequest) {
 
     const updateData: Record<string, unknown> = {
       appointmentAt: newAppointmentAt,
+      appointmentDate: datePart,
+      appointmentTime: newTime,
       status: "onaylandi",
+      updatedAt: new Date(),
     };
 
     if (doctorName) {
@@ -43,7 +55,7 @@ export async function POST(req: NextRequest) {
       const [result] = await db
         .update(appointments)
         .set(updateData)
-        .where(eq(appointments.phone, phone))
+        .where(eq(appointments.patientPhone, phone))
         .returning();
       rescheduled = result;
     }
@@ -52,25 +64,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         results: [
           {
-            toolCallId: body?.message?.toolCallList?.[0]?.id ?? "unknown",
-            result: {
-              success: false,
-              message: "Randevu bulunamadı.",
-            },
+            toolCallId,
+            result: "Randevu bulunamadı. Lütfen telefon numaranızı veya randevu bilgilerinizi kontrol edin.",
           },
         ],
       });
     }
 
+    // Log ai_action
+    await db.insert(aiActions).values({
+      actionType: "reschedule",
+      payload: { appointmentId: rescheduled.id, phone, newDate: datePart, newTime },
+      result: `Randevu ${datePart} ${newTime}'e taşındı.`,
+    });
+
     return NextResponse.json({
       results: [
         {
-          toolCallId: body?.message?.toolCallList?.[0]?.id ?? "unknown",
-          result: {
-            success: true,
-            message: `Randevunuz ${datePart} tarihinde saat ${newTime} için yeniden planlandı.`,
-            appointment: rescheduled,
-          },
+          toolCallId,
+          result: `Randevunuz ${datePart} tarihinde saat ${newTime} için başarıyla yeniden planlandı.`,
         },
       ],
     });

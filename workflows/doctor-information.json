@@ -1,0 +1,51 @@
+{
+  "name": "Klinik AI - Doktor Bilgisi",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "doctor-information",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-doctor", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst toolCallList = body?.message?.toolCallList || [];\nconst toolCall = toolCallList[0] || {};\nconst toolCallId = toolCall.id || 'unknown';\nlet args = {};\ntry { args = JSON.parse(toolCall.function?.arguments || '{}'); } catch(e) { args = {}; }\nreturn [{ json: { toolCallId, doctorName: args.doctorName || '', specialization: args.specialization || '' } }];"
+      },
+      "id": "extract-args-doctor", "name": "Argümanları Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT full_name, specialization, working_hours FROM doctors WHERE active = true AND (full_name ILIKE '%' || '{{ $json.doctorName }}' || '%' OR specialization ILIKE '%' || '{{ $json.specialization }}' || '%') LIMIT 5",
+        "options": {}
+      },
+      "id": "query-doctors", "name": "Doktorları Sorgula", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [680, 300],
+      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const toolCallId = $('Argümanları Çıkar').first().json.toolCallId;\nconst doctorName = $('Argümanları Çıkar').first().json.doctorName;\nconst specialization = $('Argümanları Çıkar').first().json.specialization;\nconst doctors = $input.all().map(i => i.json).filter(r => r.full_name);\n\nif (doctors.length === 0) {\n  const searchTerm = doctorName || specialization || 'aradığınız kritere';\n  return [{ json: { toolCallId, result: `Üzgünüm, ${searchTerm} uygun doktor bulunamadı. Başka bir uzmanlık alanı veya doktor adı ile tekrar deneyebilirsiniz.` } }];\n}\n\nif (doctors.length === 1) {\n  const d = doctors[0];\n  return [{ json: { toolCallId, result: `${d.full_name}, ${d.specialization} uzmanıdır. Çalışma saatleri: ${d.working_hours || '09:00-18:00'}. Randevu almak ister misiniz?` } }];\n}\n\nconst list = doctors.map(d => `${d.full_name} (${d.specialization})`).join(', ');\nreturn [{ json: { toolCallId, result: `Kliniğimizde şu doktorlar mevcut: ${list}. Hangi doktorla randevu almak istersiniz?` } }];"
+      },
+      "id": "format-doctor-response", "name": "Yanıt Formatla", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { results: [{ toolCallId: $json.toolCallId, result: $json.result }] } }}"
+      },
+      "id": "respond-doctor", "name": "Yanıt Ver", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Argümanları Çıkar", "type": "main", "index": 0 }]] },
+    "Argümanları Çıkar": { "main": [[{ "node": "Doktorları Sorgula", "type": "main", "index": 0 }]] },
+    "Doktorları Sorgula": { "main": [[{ "node": "Yanıt Formatla", "type": "main", "index": 0 }]] },
+    "Yanıt Formatla": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "tags": ["klinik-ai", "doctor", "vapi"]
+}

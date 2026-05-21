@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/db";
 import { appointments } from "@/db/schema";
 import { sql } from "drizzle-orm";
-import { formatDateTime, formatTime, statusLabels, statusColors, sourceLabels } from "@/lib/utils";
+import { statusLabels, statusColors, sourceLabels } from "@/lib/utils";
 import { Calendar, User } from "lucide-react";
 
 export default async function AppointmentsPage() {
@@ -30,7 +30,7 @@ export default async function AppointmentsPage() {
       {dbError && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Veritabanı şeması güncellenmesi gerekiyor. Neon Console&apos;da{" "}
-          <code className="font-mono text-xs bg-amber-100 px-1 rounded">drizzle/0001_add_missing_columns.sql</code>{" "}
+          <code className="font-mono text-xs bg-amber-100 px-1 rounded">drizzle/0002_new_tables.sql</code>{" "}
           dosyasını çalıştırın.
         </div>
       )}
@@ -46,12 +46,13 @@ export default async function AppointmentsPage() {
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Saat</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Durum</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Kaynak</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Notlar</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {appointmentRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={7} className="px-4 py-12 text-center text-gray-400">
                     {dbError ? "Veritabanı hatası — şema güncellenmesi gerekiyor" : "Henüz randevu kaydı bulunmuyor"}
                   </td>
                 </tr>
@@ -65,7 +66,7 @@ export default async function AppointmentsPage() {
                         </div>
                         <div>
                           <p className="font-medium text-gray-900">{appt.patientName ?? "-"}</p>
-                          <p className="text-xs text-gray-400">{appt.phone ?? ""}</p>
+                          <p className="text-xs text-gray-400">{appt.patientPhone ?? ""}</p>
                         </div>
                       </div>
                     </td>
@@ -73,7 +74,13 @@ export default async function AppointmentsPage() {
                     <td className="px-4 py-3 text-gray-600">
                       <div className="flex items-center gap-1.5">
                         <Calendar className="h-3.5 w-3.5 text-gray-400" />
-                        {appt.appointmentAt
+                        {appt.appointmentDate
+                          ? new Date(appt.appointmentDate + "T00:00:00").toLocaleDateString("tr-TR", {
+                              day: "numeric",
+                              month: "long",
+                              year: "numeric",
+                            })
+                          : appt.appointmentAt
                           ? new Date(appt.appointmentAt).toLocaleDateString("tr-TR", {
                               day: "numeric",
                               month: "long",
@@ -83,7 +90,13 @@ export default async function AppointmentsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-gray-600">
-                      {formatTime(appt.appointmentAt)}
+                      {appt.appointmentTime ??
+                        (appt.appointmentAt
+                          ? new Date(appt.appointmentAt).toLocaleTimeString("tr-TR", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "-")}
                     </td>
                     <td className="px-4 py-3">
                       {appt.status ? (
@@ -100,6 +113,9 @@ export default async function AppointmentsPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-500">
                       {appt.source ? (sourceLabels[appt.source] ?? appt.source) : "-"}
+                    </td>
+                    <td className="px-4 py-3 max-w-xs">
+                      <p className="text-gray-500 truncate text-xs">{appt.notes ?? "-"}</p>
                     </td>
                   </tr>
                 ))

@@ -1,0 +1,61 @@
+{
+  "name": "Klinik AI - Randevu Oluştur",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "create-appointment",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-create", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst toolCallList = body?.message?.toolCallList || [];\nconst toolCall = toolCallList[0] || {};\nconst toolCallId = toolCall.id || 'unknown';\nlet args = {};\ntry { args = JSON.parse(toolCall.function?.arguments || '{}'); } catch(e) { args = {}; }\nreturn [{ json: { toolCallId, patientName: args.patientName || '', phone: args.phone || '', doctorName: args.doctorName || '', appointmentDate: args.appointmentDate || '', appointmentTime: args.appointmentTime || '', notes: args.notes || '' } }];"
+      },
+      "id": "extract-args-create", "name": "Argümanları Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO appointments (patient_name, patient_phone, doctor_name, appointment_date, appointment_time, appointment_at, status, source)\nVALUES ('{{ $json.patientName }}', '{{ $json.phone }}', '{{ $json.doctorName }}', '{{ $json.appointmentDate }}', '{{ $json.appointmentTime }}', NOW(), 'onaylandi', 'voice_agent')\nRETURNING id",
+        "options": {}
+      },
+      "id": "insert-appointment", "name": "Randevu Ekle", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [680, 300],
+      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ai_actions (action_type, payload, result) VALUES ('create_appointment', '{\"patientName\": \"{{ $('Argümanları Çıkar').first().json.patientName }}\"}', 'Randevu oluşturuldu')",
+        "options": {}
+      },
+      "id": "log-ai-action", "name": "AI Aksiyonu Kaydet", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [900, 300],
+      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const toolCallId = $('Argümanları Çıkar').first().json.toolCallId;\nconst doctorName = $('Argümanları Çıkar').first().json.doctorName;\nconst appointmentDate = $('Argümanları Çıkar').first().json.appointmentDate;\nconst appointmentTime = $('Argümanları Çıkar').first().json.appointmentTime;\nconst patientName = $('Argümanları Çıkar').first().json.patientName;\nreturn [{ json: { toolCallId, result: `Randevu başarıyla oluşturuldu. ${patientName} için ${doctorName} ile ${appointmentDate} tarihinde saat ${appointmentTime}.` } }];"
+      },
+      "id": "format-create-response", "name": "Yanıt Formatla", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { results: [{ toolCallId: $json.toolCallId, result: $json.result }] } }}"
+      },
+      "id": "respond-create", "name": "Yanıt Ver", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Argümanları Çıkar", "type": "main", "index": 0 }]] },
+    "Argümanları Çıkar": { "main": [[{ "node": "Randevu Ekle", "type": "main", "index": 0 }]] },
+    "Randevu Ekle": { "main": [[{ "node": "AI Aksiyonu Kaydet", "type": "main", "index": 0 }]] },
+    "AI Aksiyonu Kaydet": { "main": [[{ "node": "Yanıt Formatla", "type": "main", "index": 0 }]] },
+    "Yanıt Formatla": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "tags": ["klinik-ai", "appointment", "vapi"]
+}

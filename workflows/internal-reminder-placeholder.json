@@ -1,0 +1,36 @@
+{
+  "name": "Klinik AI - İç Hatırlatıcı (Placeholder)",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "internal-reminder", "responseMode": "responseNode", "options": {} },
+      "id": "webhook-reminder", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst toolCall = body?.message?.toolCallList?.[0] || {};\nconst toolCallId = toolCall.id || 'unknown';\nlet args = {};\ntry { args = JSON.parse(toolCall.function?.arguments || '{}'); } catch(e) { args = {}; }\nreturn [{ json: { toolCallId, title: args.title || 'Hatırlatıcı', message: args.message || '', scheduledAt: args.scheduledAt || null } }];"
+      },
+      "id": "extract-reminder-data", "name": "Veriyi Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO notifications (title, description, is_read) VALUES ('{{ $json.title }}', '{{ $json.message }}', false) RETURNING id",
+        "options": {}
+      },
+      "id": "insert-reminder-notification", "name": "Hatırlatıcı Bildirimi Ekle", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [680, 300],
+      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ { success: true, notificationId: $json.id } }}" },
+      "id": "respond-reminder", "name": "Yanıt Ver", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Veriyi Çıkar", "type": "main", "index": 0 }]] },
+    "Veriyi Çıkar": { "main": [[{ "node": "Hatırlatıcı Bildirimi Ekle", "type": "main", "index": 0 }]] },
+    "Hatırlatıcı Bildirimi Ekle": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "tags": ["klinik-ai", "reminder", "placeholder"]
+}

@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/db";
-import { calls, appointments, notifications } from "@/db/schema";
+import { callLogs, appointments, notifications } from "@/db/schema";
 import { sql, eq, gte, count } from "drizzle-orm";
 import { Phone, Calendar, Clock, DollarSign, XCircle, Bell } from "lucide-react";
 import { formatDuration } from "@/lib/utils";
@@ -13,7 +13,7 @@ const emptyStats = {
   avgDuration: 0,
   totalCost: "0.00",
   cancelledCount: 0,
-  recentCalls: [] as typeof calls.$inferSelect[],
+  recentCalls: [] as typeof callLogs.$inferSelect[],
   unreadNotifications: [] as typeof notifications.$inferSelect[],
 };
 
@@ -24,8 +24,8 @@ async function getStats() {
 
     const [todayCalls] = await db
       .select({ count: count() })
-      .from(calls)
-      .where(gte(calls.createdAt, today));
+      .from(callLogs)
+      .where(gte(callLogs.createdAt, today));
 
     const [aiAppointments] = await db
       .select({ count: count() })
@@ -33,12 +33,12 @@ async function getStats() {
       .where(eq(appointments.source, "voice_agent"));
 
     const avgDurationResult = await db
-      .select({ avg: sql<number>`avg(${calls.durationSeconds})` })
-      .from(calls);
+      .select({ avg: sql<number>`avg(${callLogs.duration})` })
+      .from(callLogs);
 
     const totalCostResult = await db
-      .select({ total: sql<number>`sum(cast(${calls.cost} as numeric))` })
-      .from(calls);
+      .select({ total: sql<number>`sum(cast(${callLogs.cost} as numeric))` })
+      .from(callLogs);
 
     const [cancelledAppointments] = await db
       .select({ count: count() })
@@ -47,8 +47,8 @@ async function getStats() {
 
     const recentCalls = await db
       .select()
-      .from(calls)
-      .orderBy(sql`${calls.createdAt} desc`)
+      .from(callLogs)
+      .orderBy(sql`${callLogs.createdAt} desc`)
       .limit(5);
 
     const unreadNotifications = await db
@@ -162,12 +162,12 @@ export default async function AdminPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">
-                      {call.callerPhone ?? "Bilinmiyor"}
+                      {call.callerNumber ?? "Bilinmiyor"}
                     </p>
                     <p className="text-xs text-gray-400 truncate">{call.summary?.slice(0, 60) ?? "-"}</p>
                   </div>
                   <span className="text-xs text-gray-400">
-                    {formatDuration(call.durationSeconds)}
+                    {formatDuration(call.duration)}
                   </span>
                 </div>
               ))

@@ -2,13 +2,22 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { appointments } from "@/db/schema";
+import { appointments, aiActions, notifications } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const params = body?.message?.toolCallList?.[0]?.function?.parameters ?? body;
+    const toolCall = body?.message?.toolCallList?.[0];
+    const toolCallId = toolCall?.id ?? "unknown";
+
+    let params: Record<string, string> = {};
+    try {
+      params = JSON.parse(toolCall?.function?.arguments ?? "{}");
+    } catch {
+      params = toolCall?.function?.parameters ?? body;
+    }
+
     const { appointmentId, phone, reason } = params;
 
     if (!appointmentId && !phone) {
@@ -23,15 +32,15 @@ export async function POST(req: NextRequest) {
     if (appointmentId) {
       const [result] = await db
         .update(appointments)
-        .set({ status: "iptal" })
+        .set({ status: "iptal", updatedAt: new Date() })
         .where(eq(appointments.id, appointmentId))
         .returning();
       cancelled = result;
     } else if (phone) {
       const [result] = await db
         .update(appointments)
-        .set({ status: "iptal" })
-        .where(eq(appointments.phone, phone))
+        .set({ status: "iptal", updatedAt: new Date() })
+        .where(eq(appointments.patientPhone, phone))
         .returning();
       cancelled = result;
     }
@@ -40,21 +49,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         results: [
           {
-            toolCallId: body?.message?.toolCallList?.[0]?.id ?? "unknown",
-            result: {
-              success: false,
-              message: "Randevu bulunamadı.",
-            },
+            toolCallId,
+            result: "Randevu bulunamadı. Lütfen telefon numaranızı veya randevu bilgilerinizi kontrol edin.",
           },
         ],
       });
     }
 
+    // Log ai_action
+    await db.insert(aiActions).values({
+      actionType: "cancel",
+      payload: { appointmentId: cancelled.id, phone, reason: reason ?? null },
+      result: "Randevu başarıyla iptal edildi.",
+    });
+
+    // Create notification
+    await db.insert(notifications).values({
+      title: "Randevu İptal Edildi",
+      description: `${cancelled.patientName} adlı hastanın randevusu iptal edildi. ${reason ? `Neden: ${reason}` : ""}`,
+      isRead: false,
+    });
+
     // Trigger n8n webhook if configured
-    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
-    if (n8nWebhookUrl) {
+    const n8nBase = process.env.N8N_WEBHOOK_BASE_URL;
+    if (n8nBase) {
       try {
-        await fetch(`${n8nWebhookUrl}/appointment-cancelled`, {
+        await fetch(`${n8nBase}/webhook/cancel-appointment`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...cancelled, reason }),
@@ -67,12 +87,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       results: [
         {
-          toolCallId: body?.message?.toolCallList?.[0]?.id ?? "unknown",
-          result: {
-            success: true,
-            message: "Randevunuz başarıyla iptal edildi.",
-            appointment: cancelled,
-          },
+          toolCallId,
+          result: `Randevunuz başarıyla iptal edildi. ${reason ? `Neden: ${reason}.` : ""}`,
         },
       ],
     });

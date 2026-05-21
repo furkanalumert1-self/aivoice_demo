@@ -23,11 +23,12 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { patientName, phone, doctorName, appointmentAt, status, source } = body;
+    const { patientName, patientPhone, phone, doctorName, appointmentAt, appointmentDate, appointmentTime, status, source } = body;
 
-    if (!patientName || !phone || !appointmentAt) {
+    const resolvedPhone = patientPhone ?? phone;
+    if (!patientName || !resolvedPhone) {
       return NextResponse.json(
-        { error: "Hasta adı, telefon ve randevu tarihi gerekli" },
+        { error: "Hasta adı ve telefon gerekli" },
         { status: 400 }
       );
     }
@@ -36,9 +37,11 @@ export async function POST(req: NextRequest) {
       .insert(appointments)
       .values({
         patientName,
-        phone,
+        patientPhone: resolvedPhone,
         doctorName: doctorName ?? "Belirtilmedi",
-        appointmentAt: new Date(appointmentAt),
+        appointmentAt: appointmentAt ? new Date(appointmentAt) : null,
+        appointmentDate: appointmentDate ?? null,
+        appointmentTime: appointmentTime ?? null,
         status: status ?? "onaylandi",
         source: source ?? "web",
       })

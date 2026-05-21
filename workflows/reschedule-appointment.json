@@ -1,0 +1,51 @@
+{
+  "name": "Klinik AI - Randevu Yeniden Planlama",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reschedule-appointment",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-reschedule", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst toolCallList = body?.message?.toolCallList || [];\nconst toolCall = toolCallList[0] || {};\nconst toolCallId = toolCall.id || 'unknown';\nlet args = {};\ntry { args = JSON.parse(toolCall.function?.arguments || '{}'); } catch(e) { args = {}; }\nreturn [{ json: { toolCallId, phone: args.phone || '', newDate: args.newDate || '', newTime: args.newTime || '', doctorName: args.doctorName || '' } }];"
+      },
+      "id": "extract-args-reschedule", "name": "Argümanları Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE appointments SET appointment_date = '{{ $json.newDate }}', appointment_time = '{{ $json.newTime }}', appointment_at = NOW(), status = 'onaylandi', updated_at = NOW() WHERE patient_phone = '{{ $json.phone }}' AND status = 'onaylandi' RETURNING id, patient_name",
+        "options": {}
+      },
+      "id": "reschedule-db", "name": "Randevu Güncelle", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [680, 300],
+      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const toolCallId = $('Argümanları Çıkar').first().json.toolCallId;\nconst newDate = $('Argümanları Çıkar').first().json.newDate;\nconst newTime = $('Argümanları Çıkar').first().json.newTime;\nconst updated = $('Randevu Güncelle').all().map(i => i.json).filter(r => r.id);\nif (updated.length === 0) {\n  return [{ json: { toolCallId, result: 'Güncellenecek aktif randevunuz bulunamadı. Lütfen telefon numaranızı kontrol edin.' } }];\n}\nreturn [{ json: { toolCallId, result: `Randevunuz ${newDate} tarihinde saat ${newTime} olarak yeniden planlandı. Onaylıyor musunuz?` } }];"
+      },
+      "id": "format-reschedule-response", "name": "Yanıt Formatla", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { results: [{ toolCallId: $json.toolCallId, result: $json.result }] } }}"
+      },
+      "id": "respond-reschedule", "name": "Yanıt Ver", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Argümanları Çıkar", "type": "main", "index": 0 }]] },
+    "Argümanları Çıkar": { "main": [[{ "node": "Randevu Güncelle", "type": "main", "index": 0 }]] },
+    "Randevu Güncelle": { "main": [[{ "node": "Yanıt Formatla", "type": "main", "index": 0 }]] },
+    "Yanıt Formatla": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "tags": ["klinik-ai", "reschedule", "vapi"]
+}

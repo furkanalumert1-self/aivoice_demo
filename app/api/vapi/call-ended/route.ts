@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { calls, notifications } from "@/db/schema";
+import { calls, callLogs, notifications } from "@/db/schema";
 
 interface VapiMessage {
   type: string;
@@ -37,6 +37,27 @@ function generateSummary(transcript: string | undefined): string {
   return words + (transcript.split(" ").length > 50 ? "..." : "");
 }
 
+function detectIntent(transcript: string | undefined): string {
+  if (!transcript) return "diger";
+  const lower = transcript.toLowerCase();
+  if (lower.includes("randevu") && (lower.includes("almak") || lower.includes("oluştur") || lower.includes("aldım"))) {
+    return "randevu_alma";
+  }
+  if (lower.includes("iptal") || lower.includes("iptal etmek")) {
+    return "randevu_iptal";
+  }
+  if (lower.includes("geri ara") || lower.includes("tekrar ara") || lower.includes("geri arama")) {
+    return "geri_arama";
+  }
+  if (lower.includes("ertelemek") || lower.includes("değiştirmek") || lower.includes("yeniden")) {
+    return "randevu_alma";
+  }
+  if (lower.includes("saat") || lower.includes("bilgi") || lower.includes("sigorta") || lower.includes("çalışma")) {
+    return "bilgi";
+  }
+  return "diger";
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body: VapiMessage = await req.json();
@@ -54,24 +75,26 @@ export async function POST(req: NextRequest) {
     const transcript = callData.artifact?.transcript;
     const summary = callData.analysis?.summary ?? generateSummary(transcript);
     const cost = callData.cost?.toFixed(6);
+    const intent = detectIntent(transcript);
 
-    // Determine outcome from transcript
-    let outcome = "bilgi_verildi";
-    if (transcript) {
-      const lower = transcript.toLowerCase();
-      if (lower.includes("randevu") && (lower.includes("aldım") || lower.includes("oluşturuldu"))) {
-        outcome = "randevu_alindi";
-      } else if (lower.includes("iptal")) {
-        outcome = "iptal_edildi";
-      } else if (lower.includes("geri ara") || lower.includes("tekrar ara")) {
-        outcome = "geri_arama";
-      } else if (lower.includes("cevap yok") || lower.includes("meşgul")) {
-        outcome = "cevap_yok";
-      }
-    }
+    // Save to call_logs table (new)
+    const [savedCallLog] = await db
+      .insert(callLogs)
+      .values({
+        callerNumber: callData.customer?.number ?? "Bilinmiyor",
+        vapiCallId: callData.id,
+        transcript: transcript ?? null,
+        summary,
+        duration,
+        intent,
+        callStatus: "completed",
+        cost: cost ?? null,
+        recordingUrl: callData.artifact?.recordingUrl ?? null,
+      })
+      .returning();
 
-    // Save call record
-    const [savedCall] = await db
+    // Also save to legacy calls table for backward compat
+    await db
       .insert(calls)
       .values({
         callerPhone: callData.customer?.number ?? "Bilinmiyor",
@@ -79,33 +102,32 @@ export async function POST(req: NextRequest) {
         transcript: transcript ?? null,
         summary,
         cost: cost ?? null,
-        outcome,
+        outcome: intent,
         recordingUrl: callData.artifact?.recordingUrl ?? null,
-      })
-      .returning();
+      });
 
     // Create notification
     await db.insert(notifications).values({
       title: "Yeni Çağrı Tamamlandı",
-      description: `${callData.customer?.number ?? "Bilinmeyen numara"} araması tamamlandı. Süre: ${duration ? Math.round(duration / 60) + " dk" : "bilinmiyor"}`,
+      description: `${callData.customer?.number ?? "Bilinmeyen numara"} araması tamamlandı. Süre: ${duration ? Math.round(duration / 60) + " dk" : "bilinmiyor"}. Niyet: ${intent}`,
       isRead: false,
     });
 
     // Trigger n8n webhook if configured
-    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
-    if (n8nWebhookUrl) {
+    const n8nBase = process.env.N8N_WEBHOOK_BASE_URL;
+    if (n8nBase) {
       try {
-        await fetch(`${n8nWebhookUrl}/call-summary`, {
+        await fetch(`${n8nBase}/webhook/call-logging`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(savedCall),
+          body: JSON.stringify(savedCallLog),
         });
       } catch (webhookError) {
         console.error("n8n webhook failed:", webhookError);
       }
     }
 
-    return NextResponse.json({ success: true, callId: savedCall.id });
+    return NextResponse.json({ success: true, callLogId: savedCallLog.id });
   } catch (error) {
     console.error("Call ended webhook error:", error);
     return NextResponse.json({ error: "İşlem başarısız" }, { status: 500 });
