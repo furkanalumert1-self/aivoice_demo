@@ -62,7 +62,7 @@ Next.js API Routes (Vercel)
     ↓ SQL
 Neon PostgreSQL
     ↓ Webhook
-n8n → Bildirim / WhatsApp
+n8n → İç Olay Sistemi (DB)
     ↑
 Admin Dashboard (Next.js SSR)
 ```

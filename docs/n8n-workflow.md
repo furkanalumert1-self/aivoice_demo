@@ -10,10 +10,10 @@ Projede 4 n8n workflow bulunur:
 
 | Workflow | Tetikleyici | Amaç |
 |----------|-------------|-------|
-| `appointment-created.json` | Webhook POST | Yeni randevu bildirimi, WhatsApp mock |
+| `appointment-created.json` | Webhook POST | Yeni randevu bildirimi (DB), sistem olayı kaydı |
 | `call-summary.json` | Webhook POST | Çağrı özeti AI ile oluşturma, DB kayıt |
 | `appointment-cancelled.json` | Webhook POST | İptal bildirimi, DB güncelleme |
-| `appointment-reminder.json` | Cron (saatlik) | Yarınki randevu hatırlatıcıları |
+| `appointment-reminder.json` | Cron (saatlik) | Yarınki randevu hatırlatıcıları (DB bildirimi) |
 
 **Önemli:** Workflow'lar import sonrası mutlaka **Activate** edilmeli. Aksi halde webhook URL'leri yanıt vermez.
 
@@ -23,7 +23,7 @@ Projede 4 n8n workflow bulunur:
 
 Kaynak: `/home/user/aivoice_demo/workflows/appointment-created.json`
 
-Bu workflow, `/api/vapi/book` route'u yeni randevu oluşturduğunda tetiklenir. Zincir: Webhook → DB Bildirim → Dashboard Güncelle → WhatsApp Mock → Yanıt Ver.
+Bu workflow, `/api/vapi/book` route'u yeni randevu oluşturduğunda tetiklenir. Zincir: Webhook → Bildirim Oluştur (DB) → Sistem Olayı Kaydet (DB) → Yanıt Ver.
 
 ---
 
@@ -115,7 +115,7 @@ curl -X POST https://[instance].n8n.cloud/webhook-test/appointment-created \
 **Görevi:** Neon `notifications` tablosuna INSERT yapar.
 
 **Node Tipi:** `n8n-nodes-base.postgres`  
-**Bağlantılar:** ← Webhook | → Dashboard Güncelle
+**Bağlantılar:** ← Webhook | → Sistem Olayı Kaydet
 
 **Doldurulacak Alanlar:**
 
@@ -183,83 +183,40 @@ Credential adı: `Neon PostgreSQL` (workflow JSON'da bu isimle referans edilir)
 
 ---
 
-### Node 3: Dashboard Güncelle
+### Node 3: Sistem Olayı Kaydet
 
-**Amaç:** Admin dashboard'ın gerçek zamanlı güncellenmesi için Next.js API'sine bildirim gönderir.
+**Amaç:** Randevu oluşturuldu olayını sistem_events tablosuna kaydeder (iç olay sistemi — dış bildirim yok).
 
-**Görevi:** `/api/appointments` endpoint'ine POST atar (event notification).
+**Görevi:** Neon `system_events` tablosuna INSERT yapar.
 
-**Node Tipi:** `n8n-nodes-base.httpRequest`  
-**Bağlantılar:** ← Bildirim Oluştur | → WhatsApp Bildirim (Mock)
-
-**Doldurulacak Alanlar:**
-
-| Alan | Değer | Neden Gerekli |
-|------|-------|---------------|
-| Method | POST | API endpoint POST bekler |
-| URL | `={{ $env.NEXT_PUBLIC_APP_URL }}/api/appointments` | App URL'ini env'den al |
-| Send Body | ✓ | Payload göndermek için |
-
-**Body Parameters:**
-
-| İsim | Değer | Açıklama |
-|------|-------|----------|
-| `event` | `appointment_created` | Event tipi |
-| `appointment` | `={{ $json }}` | Webhook'tan gelen randevu nesnesi |
-
-**Expression Açıklamaları:**
-- `={{ $env.NEXT_PUBLIC_APP_URL }}` → n8n environment variable'dan app URL'ini okur. Vercel URL: `https://aivoice-demo.vercel.app`
-- `={{ $json }}` → Önceki node'dan gelen tüm JSON nesnesini gönderir
-
-**Credential:** HTTP Request node genellikle credential gerektirmez. API auth gerekirse Header Auth credential oluşturulabilir.
-
-**Hata Durumları:**
-- `ECONNREFUSED` → App URL yanlış veya Vercel'de deploy yok
-- `404` → API route mevcut değil
-
----
-
-### Node 4: WhatsApp Bildirim (Mock)
-
-**Amaç:** Hastaya randevu onay mesajı göndermek. Gerçek WhatsApp API'si entegre değil, mock URL kullanılıyor.
-
-**Görevi:** Mock WhatsApp API'ye POST atar. Gerçek entegrasyon için Twilio WhatsApp veya Meta Business API kullanılabilir.
-
-**Node Tipi:** `n8n-nodes-base.httpRequest`  
-**Bağlantılar:** ← Dashboard Güncelle | → Yanıt Ver
+**Node Tipi:** `n8n-nodes-base.postgres`  
+**Bağlantılar:** ← Bildirim Oluştur | → Yanıt Ver
 
 **Doldurulacak Alanlar:**
 
 | Alan | Değer | Neden Gerekli |
 |------|-------|---------------|
-| Method | POST | WhatsApp API POST bekler |
-| URL | `https://api.whatsapp.com/send` | Mock endpoint (prod için değiştir) |
-| Options → Ignore Response Code | ✓ | Mock URL 4xx dönebilir, workflow durmasın |
+| Operation | `insert` | Yeni kayıt oluşturma |
+| Table | `system_events` | Hedef tablo |
+| Columns | `event_type,source,severity,payload` | Insert edilecek kolonlar |
 
-**Body Parameters:**
+**Column Values:**
 
-| İsim | Expression | Açıklama |
-|------|-----------|----------|
-| `phone` | `={{ $('Webhook').item.json.phone }}` | İlk node'daki telefon numarası |
-| `message` | `=Sayın {{ $('Webhook').item.json.patientName }}, randevunuz {{ $('Webhook').item.json.appointmentAt }} tarihinde {{ $('Webhook').item.json.doctorName }} ile oluşturuldu.` | Türkçe mesaj metni |
+| Kolon | Değer | Açıklama |
+|-------|-------|----------|
+| `event_type` | `appointment_created` | Olay tipi |
+| `source` | `n8n_workflow` | Kaynak sistem |
+| `severity` | `info` | Önem seviyesi |
+| `payload` | `={{ $json }}` | Randevu verisi JSON olarak |
 
-**Expression Açıklamaları:**
-- `$('Webhook').item.json.phone` → "Webhook" adlı node'dan (ilk node) `phone` field'ını alır. Bu teknik, ara node'lar veri değiştirdiğinde orijinal payload'a erişmek için kullanılır.
-- `$('Webhook').item.json.patientName` → Orijinal hasta adı
-
-**Production'da Gerçek WhatsApp İçin:**
-```
-URL: https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Messages.json
-Auth: Basic (AccountSid:AuthToken)
-Body: To=whatsapp:+905301234567, From=whatsapp:+14155238886, Body={mesaj}
-```
+**Credential:** `Neon PostgreSQL`
 
 **Hata Durumları:**
-- `Ignore Response Code` açık değilse mock URL 4xx döndüğünde workflow durur
+- `relation "system_events" does not exist` → `drizzle/0003_observability_tables.sql` migration çalıştırılmamış
 
 ---
 
-### Node 5: Yanıt Ver
+### Node 4: Yanıt Ver
 
 **Amaç:** Webhook'a başarı yanıtı döndürür. `responseMode: responseNode` ayarı sayesinde bu node yanıtı kontrol eder.
 
@@ -563,7 +520,7 @@ Kaynak: `/home/user/aivoice_demo/workflows/appointment-reminder.json`
 
 Bu workflow webhook değil **cron** ile tetiklenir. Her saat başı çalışır, yarınki randevuları sorgular ve hatırlatma gönderir.
 
-Zincir: Zamanlanmış Tetikleyici → Yarınki Randevuları Bul → Randevu Var mı? → [Evet] Hatırlatıcıları Hazırla → Hatırlatıcı Gönder (Mock)
+Zincir: Zamanlanmış Tetikleyici → Yarınki Randevuları Bul → Randevu Var mı? → [Evet] Hatırlatıcıları Hazırla → Hatırlatıcı Bildirimi Kaydet (DB)
 
 ---
 
@@ -654,10 +611,10 @@ AND status = 'onaylandi'
 
 ### Node 4: Hatırlatıcıları Hazırla
 
-**Amaç:** Her randevu için WhatsApp mesaj metni oluşturur.
+**Amaç:** Her randevu için bildirim verisi hazırlar.
 
 **Node Tipi:** `n8n-nodes-base.code`  
-**Bağlantılar:** ← Randevu Var mı? (true) | → Hatırlatıcı Gönder (Mock)
+**Bağlantılar:** ← Randevu Var mı? (true) | → Hatırlatıcı Bildirimi Kaydet
 
 **JavaScript Kodu:**
 ```javascript
@@ -670,8 +627,9 @@ for (const appt of appointments) {
     .toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
   
   reminders.push({
-    phone: data.phone,
-    message: `Sayın ${data.patient_name}, yarın saat ${appointmentTime} için ${data.doctor_name} ile randevunuz bulunmaktadır. Lütfen zamanında gelmeyi unutmayın.`,
+    title: `Randevu Hatırlatıcısı — ${data.patient_name}`,
+    description: `Sayın ${data.patient_name}, yarın saat ${appointmentTime} için ${data.doctor_name} ile randevunuz bulunmaktadır.`,
+    is_read: false,
     patientName: data.patient_name,
     appointmentAt: data.appointment_at
   });
@@ -688,8 +646,9 @@ return reminders.map(r => ({ json: r }));
 **Output (her randevu için ayrı item):**
 ```json
 {
-  "phone": "05301234567",
-  "message": "Sayın Ahmet Yılmaz, yarın saat 10:00 için Dr. Ayşe Kaya ile randevunuz bulunmaktadır.",
+  "title": "Randevu Hatırlatıcısı — Ahmet Yılmaz",
+  "description": "Sayın Ahmet Yılmaz, yarın saat 10:00 için Dr. Ayşe Kaya ile randevunuz bulunmaktadır.",
+  "is_read": false,
   "patientName": "Ahmet Yılmaz",
   "appointmentAt": "2025-09-12T10:00:00.000Z"
 }
@@ -697,35 +656,30 @@ return reminders.map(r => ({ json: r }));
 
 ---
 
-### Node 5: Hatırlatıcı Gönder (Mock)
+### Node 5: Hatırlatıcı Bildirimi Kaydet
 
-**Amaç:** Her hasta için WhatsApp mesajı gönderir (mock).
+**Amaç:** Her hasta için hatırlatıcı bildirimini DB'ye yazar (dış mesajlaşma yok — tüm olaylar DB'ye).
 
-**Node Tipi:** `n8n-nodes-base.httpRequest`  
+**Node Tipi:** `n8n-nodes-base.postgres`  
 **Bağlantılar:** ← Hatırlatıcıları Hazırla
 
 | Alan | Değer |
 |------|-------|
-| Method | POST |
-| URL | `https://mock-whatsapp-api.example.com/send` |
-| Options → Ignore Response Code | ✓ |
+| Operation | `insert` |
+| Table | `notifications` |
+| Columns | `title,description,is_read` |
 
-**Body Parameters:**
+**Column Values:**
 
-| İsim | Expression |
-|------|-----------|
-| `to` | `={{ $json.phone }}` |
-| `message` | `={{ $json.message }}` |
+| Kolon | Expression |
+|-------|-----------|
+| `title` | `={{ $json.title }}` |
+| `description` | `={{ $json.description }}` |
+| `is_read` | `={{ $json.is_read }}` |
 
-**Not:** Bu node her input item için ayrı çalışır (n8n default davranışı). 3 randevu varsa 3 kez HTTP POST atılır.
+**Not:** Bu node her input item için ayrı çalışır (n8n default davranışı). 3 randevu varsa 3 bildirim kaydı oluşturulur.
 
-**Production'da Gerçek SMS/WhatsApp:**
-Twilio SMS örneği:
-```
-URL: https://api.twilio.com/2010-04-01/Accounts/{SID}/Messages.json
-Auth: Basic Auth (AccountSid:AuthToken)
-Body: To={phone}, From={twilio_number}, Body={message}
-```
+**Credential:** `Neon PostgreSQL`
 
 ---
 

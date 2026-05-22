@@ -46,7 +46,7 @@
 │  • calls              │   │  • appointment-cancelled workflow  │
 │  • notifications      │   │  • appointment-reminder workflow   │
 │                       │   │                                    │
-│  SOURCE OF TRUTH      │   │  Bildirim / WhatsApp (Mock)        │
+│  SOURCE OF TRUTH      │   │  İç Olay Sistemi (DB)              │
 └───────────────────────┘   │  GPT-4o özet oluşturma             │
            ▲                └────────────────────────────────────┘
            │ SQL READ                          │ (async, eventual consistency)
@@ -57,6 +57,10 @@
 │  • /admin/appointments — randevu listesi                        │
 │  • /admin/calls    — çağrı kayıtları                           │
 │  • /admin/call-list — arama listesi                            │
+│  • /admin/monitoring — workflow execution takibi               │
+│  • /admin/analytics — çağrı analitiği                         │
+│  • /admin/health   — sistem sağlığı                           │
+│  • /admin/audit    — sistem olayları & audit                  │
 │  Server Component: doğrudan DB'den okur, cache yok             │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -88,11 +92,12 @@
 - **Veri Formatı:** SQL (Drizzle ORM parametreli sorgular, injection riski yok).
 
 #### n8n Workflow Engine (n8n.cloud)
-- **Rolü:** Asenkron iş süreçleri — bildirim gönderme, AI özet üretme, hatırlatıcı SMS/WhatsApp.
+- **Rolü:** Asenkron iş süreçleri — iç olay kaydı, bildirim oluşturma, AI özet üretme, hatırlatıcı.
 - **Veri Alır:** Next.js API Routes'dan webhook POST (randevu oluşturuldu, çağrı bitti, iptal).
-- **Veri Gönderir:** Neon'a doğrudan PostgreSQL yazması. WhatsApp API'ye HTTP POST. Admin dashboard'a HTTP POST.
+- **Veri Gönderir:** Neon'a doğrudan PostgreSQL yazması (notifications, system_events tabloları). Admin dashboard'a HTTP POST.
 - **Senkronizasyon:** **Asenkron** — Next.js isteği ateşler ve beklemez. n8n kendi iç akışında çalışır.
 - **Veri Formatı:** JSON (webhook payload), SQL (Neon node'u).
+- **NOT:** Tüm dış bildirimler (WhatsApp, SMS, e-posta) devre dışıdır. Tüm olaylar DB'ye yazılır.
 
 #### Admin Dashboard (Next.js SSR)
 - **Rolü:** Klinik personelinin randevuları ve çağrıları görmesi için React UI.
@@ -294,7 +299,7 @@ Cache yok (force-dynamic) → her seferinde fresh data
 | **VAPI** | Sesli AI arayüzü | Her ikisi | JSON (tool calls), WebRTC | API route'lar, TTS | Hasta sesi, API yanıtları |
 | **Next.js API** | İş mantığı katmanı | Senkron (iç), Async (n8n) | HTTP JSON | n8n webhook, Neon INSERT | VAPI POST, Admin REST |
 | **Neon PostgreSQL** | Kalıcı veri deposu (Source of Truth) | Senkron (ACID) | SQL | - | API route SQL |
-| **n8n** | Asenkron iş akışları | Asenkron | JSON, SQL, HTTP | WhatsApp, Bildirim | Next.js webhook POST |
+| **n8n** | Asenkron iş akışları | Asenkron | JSON, SQL, HTTP | İç Olay Sistemi (DB), Bildirim | Next.js webhook POST |
 | **Admin Dashboard** | Yönetim UI | Senkron (SSR) | HTML (SSR), DB query | - | Neon SELECT |
 | **ElevenLabs** | Türkçe TTS | Senkron | Audio stream | - | VAPI TTS komutu |
 | **GPT-4o** | LLM (VAPI içinde) | Senkron | JSON (messages/tools) | Function calls | Konuşma geçmişi |

@@ -13,6 +13,10 @@ import {
   Users,
   Brain,
   ChevronRight,
+  Activity,
+  TrendingUp,
+  Heart,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -65,6 +69,29 @@ const navItems = [
   },
 ];
 
+const observabilityItems = [
+  {
+    label: "Monitoring",
+    href: "/admin/monitoring",
+    icon: Activity,
+  },
+  {
+    label: "Analitik",
+    href: "/admin/analytics",
+    icon: TrendingUp,
+  },
+  {
+    label: "Sistem Sağlığı",
+    href: "/admin/health",
+    icon: Heart,
+  },
+  {
+    label: "Audit Kayıtları",
+    href: "/admin/audit",
+    icon: Shield,
+  },
+];
+
 export function Sidebar() {
   const pathname = usePathname();
 
@@ -88,6 +115,45 @@ export function Sidebar() {
             const isActive = item.exact
               ? pathname === item.href
               : pathname.startsWith(item.href);
+            const Icon = item.icon;
+
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-indigo-50 text-indigo-700"
+                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                  )}
+                >
+                  <Icon
+                    className={cn(
+                      "h-4 w-4 shrink-0",
+                      isActive ? "text-indigo-600" : "text-gray-400"
+                    )}
+                  />
+                  <span className="flex-1">{item.label}</span>
+                  {isActive && (
+                    <ChevronRight className="h-3 w-3 text-indigo-400" />
+                  )}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+
+        {/* Divider */}
+        <div className="my-3 border-t border-gray-100" />
+
+        {/* Observability Section */}
+        <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
+          Gözlemlenebilirlik
+        </p>
+        <ul className="space-y-1">
+          {observabilityItems.map((item) => {
+            const isActive = pathname.startsWith(item.href);
             const Icon = item.icon;
 
             return (
