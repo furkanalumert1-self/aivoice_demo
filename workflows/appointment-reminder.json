@@ -21,7 +21,7 @@
     },
     {
       "parameters": {
-        "operation": "select",
+        "operation": "executeQuery",
         "query": "SELECT * FROM appointments WHERE appointment_at::date = (CURRENT_DATE + INTERVAL '1 day') AND status = 'onaylandi'",
         "options": {}
       },
@@ -68,7 +68,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const appointments = $input.all();\nconst reminders = [];\n\nfor (const appt of appointments) {\n  const data = appt.json;\n  reminders.push({\n    phone: data.phone,\n    message: `Sayın ${data.patient_name}, yarın saat ${new Date(data.appointment_at).toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit'})} için ${data.doctor_name} ile randevunuz bulunmaktadır. Lütfen zamanında gelmeyi unutmayın.`,\n    patientName: data.patient_name,\n    appointmentAt: data.appointment_at\n  });\n}\n\nreturn reminders.map(r => ({ json: r }));"
+        "jsCode": "const appointments = $input.all();\nconst reminders = [];\n\nfor (const appt of appointments) {\n  const data = appt.json;\n  const appointmentTime = new Date(data.appointment_at)\n    .toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });\n  reminders.push({\n    title: `Randevu Hatırlatıcısı — ${data.patient_name}`,\n    description: `Sayın ${data.patient_name}, yarın saat ${appointmentTime} için ${data.doctor_name} ile randevunuz bulunmaktadır.`,\n    is_read: false,\n    patientName: data.patient_name,\n    appointmentAt: data.appointment_at\n  });\n}\n\nreturn reminders.map(r => ({ json: r }));"
       },
       "id": "prepare-reminders-node",
       "name": "Hatırlatıcıları Hazırla",
@@ -78,24 +78,22 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://mock-whatsapp-api.example.com/send",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            { "name": "to", "value": "={{ $json.phone }}" },
-            { "name": "message", "value": "={{ $json.message }}" }
-          ]
-        },
-        "options": {
-          "ignoreResponseCode": true
-        }
+        "operation": "insert",
+        "table": "notifications",
+        "columns": "title,description,is_read",
+        "additionalFields": {}
       },
-      "id": "send-reminder-node",
-      "name": "Hatırlatıcı Gönder (Mock)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1120, 200]
+      "id": "save-reminder-node",
+      "name": "Hatırlatıcı Bildirimi Kaydet",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1120, 200],
+      "credentials": {
+        "postgres": {
+          "id": "neon-db",
+          "name": "Neon PostgreSQL"
+        }
+      }
     }
   ],
   "connections": {
@@ -112,12 +110,12 @@
       ]
     },
     "Hatırlatıcıları Hazırla": {
-      "main": [[{ "node": "Hatırlatıcı Gönder (Mock)", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Hatırlatıcı Bildirimi Kaydet", "type": "main", "index": 0 }]]
     }
   },
   "active": true,
   "settings": {
     "executionOrder": "v1"
   },
-  "tags": ["klinik-ai", "reminder", "cron"]
+  "tags": ["klinik-ai", "reminder", "cron", "internal-event"]
 }

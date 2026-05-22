@@ -26,78 +26,40 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.4,
       "position": [460, 300],
-      "credentials": {
-        "postgres": {
-          "id": "neon-db",
-          "name": "Neon PostgreSQL"
-        }
-      }
+      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "={{ $env.NEXT_PUBLIC_APP_URL }}/api/appointments",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            { "name": "event", "value": "appointment_created" },
-            { "name": "appointment", "value": "={{ $json }}" }
-          ]
-        }
+        "operation": "insert",
+        "table": "system_events",
+        "columns": "event_type,source,severity,payload",
+        "additionalFields": {}
       },
-      "id": "update-dashboard-node",
-      "name": "Dashboard Güncelle",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [680, 300]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.whatsapp.com/send",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            { "name": "phone", "value": "={{ $('Webhook').item.json.phone }}" },
-            { "name": "message", "value": "Sayın {{ $('Webhook').item.json.patientName }}, randevunuz {{ $('Webhook').item.json.appointmentAt }} tarihinde {{ $('Webhook').item.json.doctorName }} ile oluşturuldu." }
-          ]
-        }
-      },
-      "id": "whatsapp-node",
-      "name": "WhatsApp Bildirim (Mock)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [900, 300]
+      "id": "log-event-node",
+      "name": "Sistem Olayı Kaydet",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [680, 300],
+      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { success: true, message: 'Workflow tamamlandı' } }}"
+        "responseBody": "={{ { success: true, message: 'Randevu bildirimi kaydedildi' } }}"
       },
       "id": "respond-node",
       "name": "Yanıt Ver",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [1120, 300]
+      "position": [900, 300]
     }
   ],
   "connections": {
-    "Webhook": {
-      "main": [[{ "node": "Bildirim Oluştur", "type": "main", "index": 0 }]]
-    },
-    "Bildirim Oluştur": {
-      "main": [[{ "node": "Dashboard Güncelle", "type": "main", "index": 0 }]]
-    },
-    "Dashboard Güncelle": {
-      "main": [[{ "node": "WhatsApp Bildirim (Mock)", "type": "main", "index": 0 }]]
-    },
-    "WhatsApp Bildirim (Mock)": {
-      "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]]
-    }
+    "Webhook": { "main": [[{ "node": "Bildirim Oluştur", "type": "main", "index": 0 }]] },
+    "Bildirim Oluştur": { "main": [[{ "node": "Sistem Olayı Kaydet", "type": "main", "index": 0 }]] },
+    "Sistem Olayı Kaydet": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] }
   },
   "active": true,
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "tags": ["klinik-ai", "appointment"]
+  "settings": { "executionOrder": "v1" },
+  "tags": ["klinik-ai", "appointment", "internal-event"]
 }

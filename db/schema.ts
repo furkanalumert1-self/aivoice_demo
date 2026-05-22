@@ -101,6 +101,50 @@ export const notifications = pgTable("notifications", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// WORKFLOW_LOGS — n8n execution tracking
+export const workflowLogs = pgTable("workflow_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workflowName: text("workflow_name").notNull(),
+  executionId: text("execution_id"),
+  correlationId: text("correlation_id"),
+  status: text("status").notNull(), // success | failed | timeout
+  errorMessage: text("error_message"),
+  payload: jsonb("payload"),
+  executionDuration: integer("execution_duration"), // milliseconds
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// SYSTEM_EVENTS — internal event log (replaces external notifications)
+export const systemEvents = pgTable("system_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  eventType: text("event_type").notNull(), // appointment_created | appointment_cancelled | call_received | etc
+  source: text("source").notNull(), // n8n_workflow | vapi_webhook | admin_action | api_route
+  severity: text("severity").default("info"), // info | warning | error | critical
+  payload: jsonb("payload"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ADMIN_AUDIT_LOGS — admin action tracking
+export const adminAuditLogs = pgTable("admin_audit_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  action: text("action").notNull(), // appointment_status_changed | call_viewed | doctor_updated
+  actor: text("actor"), // user email or "system"
+  target: text("target"), // resource id
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// WORKFLOW_HEALTH — aggregated workflow health metrics
+export const workflowHealth = pgTable("workflow_health", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workflowName: text("workflow_name").notNull().unique(),
+  lastExecution: timestamp("last_execution"),
+  successRate: numeric("success_rate"), // 0.00-1.00
+  avgDuration: integer("avg_duration"), // ms
+  failedCount: integer("failed_count").default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Export all types
 export type Doctor = typeof doctors.$inferSelect;
 export type NewDoctor = typeof doctors.$inferInsert;
@@ -116,3 +160,11 @@ export type ClinicSettings = typeof clinicSettings.$inferSelect;
 export type CallbackRequest = typeof callbackRequests.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type NewNotification = typeof notifications.$inferInsert;
+
+// Observability type exports
+export type WorkflowLog = typeof workflowLogs.$inferSelect;
+export type NewWorkflowLog = typeof workflowLogs.$inferInsert;
+export type SystemEvent = typeof systemEvents.$inferSelect;
+export type NewSystemEvent = typeof systemEvents.$inferInsert;
+export type AdminAuditLog = typeof adminAuditLogs.$inferSelect;
+export type WorkflowHealthRecord = typeof workflowHealth.$inferSelect;
