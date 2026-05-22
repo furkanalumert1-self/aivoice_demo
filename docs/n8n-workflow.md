@@ -223,7 +223,7 @@ Credential adı: `Neon PostgreSQL` (workflow JSON'da bu isimle referans edilir)
 **Görevi:** Next.js'e HTTP 200 ve JSON yanıtı gönderir.
 
 **Node Tipi:** `n8n-nodes-base.respondToWebhook`  
-**Bağlantılar:** ← WhatsApp Bildirim (Mock)
+**Bağlantılar:** ← Sistem Olayı Kaydet
 
 **Doldurulacak Alanlar:**
 
