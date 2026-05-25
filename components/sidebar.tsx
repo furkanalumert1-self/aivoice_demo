@@ -5,9 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Calendar,
-  ClipboardList,
   Phone,
-  PhoneCall,
   Stethoscope,
   Wrench,
   Users,
@@ -33,19 +31,9 @@ const navItems = [
     icon: Calendar,
   },
   {
-    label: "Form Kayıtları",
-    href: "/admin/forms",
-    icon: ClipboardList,
-  },
-  {
     label: "Çağrı Kayıtları",
     href: "/admin/calls",
     icon: Phone,
-  },
-  {
-    label: "Arama Listesi",
-    href: "/admin/call-list",
-    icon: PhoneCall,
   },
   {
     label: "Doktor / Takvim",
