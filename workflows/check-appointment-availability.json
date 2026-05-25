@@ -7,37 +7,51 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst toolCallList = body?.message?.toolCallList || [];\nconst toolCall = toolCallList[0] || {};\nconst toolCallId = toolCall.id || 'unknown';\nlet args = {};\ntry { args = JSON.parse(toolCall.function?.arguments || '{}'); } catch(e) { args = {}; }\nreturn [{ json: { toolCallId, doctorName: args.doctorName || '', preferredDate: args.preferredDate || '', preferredTime: args.preferredTime || '' } }];"
+        "jsCode": "try {\n  const body = $input.first().json.body || $input.first().json;\n  const toolCallList = body?.message?.toolCallList || [];\n  if (toolCallList.length === 0) throw new Error('empty toolCallList');\n  const toolCall = toolCallList[0];\n  const toolCallId = toolCall.id || 'unknown';\n  let args = {};\n  try { args = typeof toolCall.function?.arguments === 'string' ? JSON.parse(toolCall.function.arguments) : (toolCall.function?.arguments || {}); } catch(e) { args = {}; }\n  const doctorName = (args.doctorName || '').trim();\n  const preferredDate = (args.preferredDate || '').trim();\n  const preferredTime = (args.preferredTime || '').trim();\n  if (!doctorName || !preferredDate) {\n    return [{ json: { toolCallId, error: true, result: 'Doktor adı ve tarih bilgisi gereklidir. Hangi doktoru ve hangi tarihi tercih ediyorsunuz?' } }];\n  }\n  return [{ json: { toolCallId, doctorName, preferredDate, preferredTime, error: false } }];\n} catch(e) {\n  return [{ json: { toolCallId: 'unknown', error: true, result: 'İsteğinizi işlerken bir hata oluştu. Lütfen tekrar deneyin.' } }];\n}"
       },
       "id": "extract-args", "name": "Argümanları Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT a.id, a.appointment_date, a.appointment_time, a.patient_name FROM appointments a WHERE a.doctor_name ILIKE '%' || '{{ $json.doctorName }}' || '%' AND a.appointment_date = '{{ $json.preferredDate }}' AND a.status != 'iptal' ORDER BY a.appointment_time",
-        "options": {}
+        "conditions": { "options": { "caseSensitive": true }, "conditions": [{ "id": "no-error", "leftValue": "={{ $json.error }}", "rightValue": false, "operator": { "type": "boolean", "operation": "equals" } }], "combinator": "and" }
       },
-      "id": "check-conflicts", "name": "Çakışmaları Kontrol Et", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [680, 300],
+      "id": "check-validation", "name": "Doğrulama Geçerli?", "type": "n8n-nodes-base.if", "typeVersion": 2, "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, appointment_date, appointment_time, patient_name FROM appointments WHERE doctor_name ILIKE '%' || $1 || '%' AND appointment_date = $2 AND status != 'iptal' ORDER BY appointment_time",
+        "options": { "queryBatching": "independently", "queryReplacement": "={{ [$json.doctorName, $json.preferredDate] }}" }
+      },
+      "id": "check-conflicts", "name": "Çakışmaları Kontrol Et", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [900, 200],
       "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
     },
     {
       "parameters": {
-        "jsCode": "const toolCallId = $('Argümanları Çıkar').first().json.toolCallId;\nconst doctorName = $('Argümanları Çıkar').first().json.doctorName;\nconst preferredDate = $('Argümanları Çıkar').first().json.preferredDate;\nconst preferredTime = $('Argümanları Çıkar').first().json.preferredTime;\nconst conflicts = $input.all().map(i => i.json).filter(r => r.id);\n\nif (conflicts.length === 0) {\n  return [{ json: { toolCallId, result: `${doctorName} doktoru ${preferredDate} tarihinde ${preferredTime || '09:00-18:00 saatleri arasında'} müsait. Randevu oluşturabilirsiniz.` } }];\n}\n\nconst bookedTimes = conflicts.map(c => c.appointment_time).join(', ');\nreturn [{ json: { toolCallId, result: `${doctorName} doktorunun ${preferredDate} tarihinde şu saatleri dolu: ${bookedTimes}. Farklı bir saat veya tarih tercih eder misiniz?` } }];"
+        "jsCode": "const extracted = $('Argümanları Çıkar').first().json;\nconst toolCallId = extracted.toolCallId;\nconst doctorName = extracted.doctorName;\nconst preferredDate = extracted.preferredDate;\nconst preferredTime = extracted.preferredTime;\nconst conflicts = $input.all().map(i => i.json).filter(r => r.id);\nif (conflicts.length === 0) {\n  const timeInfo = preferredTime ? `saat ${preferredTime}` : '09:00-18:00 saatleri arasında';\n  return [{ json: { toolCallId, result: `${doctorName} doktoru ${preferredDate} tarihinde ${timeInfo} müsait. Randevu oluşturmak ister misiniz?` } }];\n}\nconst bookedTimes = conflicts.map(c => c.appointment_time).filter(Boolean).join(', ');\nreturn [{ json: { toolCallId, result: `${doctorName} doktorunun ${preferredDate} tarihinde dolu saatleri: ${bookedTimes}. Farklı bir saat veya tarih tercih eder misiniz?` } }];"
       },
-      "id": "format-response", "name": "Yanıt Formatla", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [900, 300]
+      "id": "format-availability", "name": "Müsaitlik Formatla", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nreturn [{ json: { toolCallId: data.toolCallId, result: data.result } }];"
+      },
+      "id": "pass-validation-error", "name": "Doğrulama Hatası", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [900, 400]
     },
     {
       "parameters": { "respondWith": "json", "responseBody": "={{ { results: [{ toolCallId: $json.toolCallId, result: $json.result }] } }}" },
-      "id": "respond-node", "name": "Yanıt Ver", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1120, 300]
+      "id": "respond-node", "name": "Yanıt Ver", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1340, 300]
     }
   ],
   "connections": {
     "Webhook": { "main": [[{ "node": "Argümanları Çıkar", "type": "main", "index": 0 }]] },
-    "Argümanları Çıkar": { "main": [[{ "node": "Çakışmaları Kontrol Et", "type": "main", "index": 0 }]] },
-    "Çakışmaları Kontrol Et": { "main": [[{ "node": "Yanıt Formatla", "type": "main", "index": 0 }]] },
-    "Yanıt Formatla": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] }
+    "Argümanları Çıkar": { "main": [[{ "node": "Doğrulama Geçerli?", "type": "main", "index": 0 }]] },
+    "Doğrulama Geçerli?": { "main": [[{ "node": "Çakışmaları Kontrol Et", "type": "main", "index": 0 }], [{ "node": "Doğrulama Hatası", "type": "main", "index": 0 }]] },
+    "Çakışmaları Kontrol Et": { "main": [[{ "node": "Müsaitlik Formatla", "type": "main", "index": 0 }]] },
+    "Müsaitlik Formatla": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] },
+    "Doğrulama Hatası": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] }
   },
   "active": true,
-  "settings": { "executionOrder": "v1" },
-  "tags": ["klinik-ai", "availability", "vapi"]
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "tags": ["klinik-ai", "vapi", "availability"]
 }

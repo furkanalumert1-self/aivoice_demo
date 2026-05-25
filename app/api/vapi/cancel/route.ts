@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { appointments, aiActions, notifications } from "@/db/schema";
+import { appointments, aiActions } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
@@ -62,27 +62,6 @@ export async function POST(req: NextRequest) {
       payload: { appointmentId: cancelled.id, phone, reason: reason ?? null },
       result: "Randevu başarıyla iptal edildi.",
     });
-
-    // Create notification
-    await db.insert(notifications).values({
-      title: "Randevu İptal Edildi",
-      description: `${cancelled.patientName} adlı hastanın randevusu iptal edildi. ${reason ? `Neden: ${reason}` : ""}`,
-      isRead: false,
-    });
-
-    // Trigger n8n webhook if configured
-    const n8nBase = process.env.N8N_WEBHOOK_BASE_URL;
-    if (n8nBase) {
-      try {
-        await fetch(`${n8nBase}/webhook/cancel-appointment`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...cancelled, reason }),
-        });
-      } catch (webhookError) {
-        console.error("n8n webhook failed:", webhookError);
-      }
-    }
 
     return NextResponse.json({
       results: [

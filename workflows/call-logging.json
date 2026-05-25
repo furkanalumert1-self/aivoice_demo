@@ -1,54 +1,53 @@
 {
-  "name": "Klinik AI - Arama Kayıt",
+  "name": "Klinik AI - Çağrı Kaydı",
   "nodes": [
     {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "call-logging",
-        "responseMode": "responseNode",
-        "options": {}
-      },
-      "id": "webhook-call-log", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 300]
+      "parameters": { "httpMethod": "POST", "path": "call-logging", "responseMode": "responseNode", "options": {} },
+      "id": "webhook-node", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 300]
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst call = body?.message?.call || body;\nreturn [{ json: {\n  callerNumber: call?.customer?.number || call.callerNumber || 'Bilinmiyor',\n  vapiCallId: call?.id || call.vapiCallId || null,\n  transcript: call?.artifact?.transcript || call.transcript || null,\n  summary: call?.analysis?.summary || call.summary || null,\n  duration: call?.durationSeconds || call.duration || null,\n  intent: call?.intent || 'diger',\n  cost: call?.cost || null,\n  recordingUrl: call?.artifact?.recordingUrl || null\n}}];"
+        "jsCode": "try {\n  const body = $input.first().json.body || $input.first().json;\n  const message = body?.message || body || {};\n  const call = message.call || {};\n  const analysis = message.analysis || {};\n  const artifact = message.artifact || {};\n\n  const vapiCallId = (call.id || body.call_id || '').trim();\n  const callerNumber = (call.customer?.number || call.callerNumber || body.caller_number || '').trim();\n  const duration = parseInt(call.endedAt && call.startedAt ? (new Date(call.endedAt) - new Date(call.startedAt)) / 1000 : (body.duration || 0));\n  const transcript = artifact.transcript || body.transcript || '';\n  const summary = analysis.summary || body.summary || '';\n  const intent = analysis.structuredData?.intent || body.intent || 'diger';\n  const callStatus = message.endedReason === 'assistant-error' ? 'failed' : 'completed';\n  const recordingUrl = artifact.recordingUrl || body.recording_url || '';\n  const cost = parseFloat(call.cost || body.cost || 0) || null;\n\n  return [{ json: { vapiCallId, callerNumber, duration, transcript, summary, intent, callStatus, recordingUrl, cost, error: false } }];\n} catch(e) {\n  return [{ json: { error: true, message: String(e) } }];\n}"
       },
-      "id": "extract-call-data", "name": "Arama Verisi Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
+      "id": "extract-call-data", "name": "Çağrı Verisini Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO call_logs (caller_number, vapi_call_id, transcript, summary, duration, intent, call_status, cost, recording_url)\nVALUES ('{{ $json.callerNumber }}', '{{ $json.vapiCallId }}', '{{ $json.transcript }}', '{{ $json.summary }}', {{ $json.duration }}, '{{ $json.intent }}', 'completed', {{ $json.cost }}, '{{ $json.recordingUrl }}')",
-        "options": {}
+        "conditions": { "options": {}, "conditions": [{ "id": "no-error", "leftValue": "={{ $json.error }}", "rightValue": false, "operator": { "type": "boolean", "operation": "equals" } }], "combinator": "and" }
       },
-      "id": "insert-call-log", "name": "Arama Kaydı Ekle", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [680, 300],
-      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
+      "id": "check-error", "name": "Veri Geçerli Mi?", "type": "n8n-nodes-base.if", "typeVersion": 2, "position": [680, 300]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO notifications (title, description, is_read) VALUES ('Yeni Arama Kaydı', '{{ $('Arama Verisi Çıkar').first().json.callerNumber }} numaralı hasta aradı. Süre: {{ $('Arama Verisi Çıkar').first().json.duration }} saniye.', false)",
-        "options": {}
+        "query": "INSERT INTO call_logs (caller_number, vapi_call_id, transcript, summary, duration, intent, call_status, recording_url, cost) VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7, NULLIF($8, ''), $9) ON CONFLICT (vapi_call_id) DO UPDATE SET summary = EXCLUDED.summary, intent = EXCLUDED.intent, duration = EXCLUDED.duration, call_status = EXCLUDED.call_status RETURNING id",
+        "options": { "queryBatching": "independently", "queryReplacement": "={{ [$json.callerNumber, $json.vapiCallId, $json.transcript, $json.summary, $json.duration || 0, $json.intent || 'diger', $json.callStatus || 'completed', $json.recordingUrl, $json.cost] }}" }
       },
-      "id": "insert-call-notification", "name": "Bildirim Ekle", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [900, 300],
+      "id": "insert-call-log", "name": "Çağrı Logunu Kaydet", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [900, 200],
       "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={ \"success\": true }"
+        "responseBody": "={{ { success: true, id: $json.id } }}"
       },
-      "id": "respond-call-log", "name": "Yanıt Ver", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1120, 300]
+      "id": "respond-success", "name": "Başarı Yanıtı", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: false, error: 'Data extraction failed' } }}"
+      },
+      "id": "respond-error", "name": "Hata Yanıtı", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [900, 400]
     }
   ],
   "connections": {
-    "Webhook": { "main": [[{ "node": "Arama Verisi Çıkar", "type": "main", "index": 0 }]] },
-    "Arama Verisi Çıkar": { "main": [[{ "node": "Arama Kaydı Ekle", "type": "main", "index": 0 }]] },
-    "Arama Kaydı Ekle": { "main": [[{ "node": "Bildirim Ekle", "type": "main", "index": 0 }]] },
-    "Bildirim Ekle": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] }
+    "Webhook": { "main": [[{ "node": "Çağrı Verisini Çıkar", "type": "main", "index": 0 }]] },
+    "Çağrı Verisini Çıkar": { "main": [[{ "node": "Veri Geçerli Mi?", "type": "main", "index": 0 }]] },
+    "Veri Geçerli Mi?": { "main": [[{ "node": "Çağrı Logunu Kaydet", "type": "main", "index": 0 }], [{ "node": "Hata Yanıtı", "type": "main", "index": 0 }]] },
+    "Çağrı Logunu Kaydet": { "main": [[{ "node": "Başarı Yanıtı", "type": "main", "index": 0 }]] }
   },
   "active": true,
-  "settings": { "executionOrder": "v1" },
-  "tags": ["klinik-ai", "call-logging", "vapi"]
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "tags": ["klinik-ai", "vapi", "logging"]
 }

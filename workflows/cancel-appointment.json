@@ -2,60 +2,80 @@
   "name": "Klinik AI - Randevu İptal",
   "nodes": [
     {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "cancel-appointment",
-        "responseMode": "responseNode",
-        "options": {}
-      },
-      "id": "webhook-cancel", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 300]
+      "parameters": { "httpMethod": "POST", "path": "cancel-appointment", "responseMode": "responseNode", "options": {} },
+      "id": "webhook-node", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 300]
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst toolCallList = body?.message?.toolCallList || [];\nconst toolCall = toolCallList[0] || {};\nconst toolCallId = toolCall.id || 'unknown';\nlet args = {};\ntry { args = JSON.parse(toolCall.function?.arguments || '{}'); } catch(e) { args = {}; }\nreturn [{ json: { toolCallId, phone: args.phone || '', appointmentId: args.appointmentId || null, reason: args.reason || 'Belirtilmedi' } }];"
+        "jsCode": "try {\n  const body = $input.first().json.body || $input.first().json;\n  const toolCallList = body?.message?.toolCallList || [];\n  if (toolCallList.length === 0) throw new Error('empty toolCallList');\n  const toolCall = toolCallList[0];\n  const toolCallId = toolCall.id || 'unknown';\n  let args = {};\n  try { args = typeof toolCall.function?.arguments === 'string' ? JSON.parse(toolCall.function.arguments) : (toolCall.function?.arguments || {}); } catch(e) { args = {}; }\n  const phone = (args.phone || args.patientPhone || '').trim();\n  const patientName = (args.patientName || '').trim();\n  const appointmentDate = (args.appointmentDate || '').trim();\n  if (!phone && !patientName) {\n    return [{ json: { toolCallId, error: true, result: 'Randevuyu iptal etmek için hasta adı veya telefon numarası gereklidir.' } }];\n  }\n  return [{ json: { toolCallId, phone, patientName, appointmentDate, error: false } }];\n} catch(e) {\n  return [{ json: { toolCallId: 'unknown', error: true, result: 'İsteğinizi işlerken bir hata oluştu. Lütfen tekrar deneyin.' } }];\n}"
       },
-      "id": "extract-args-cancel", "name": "Argümanları Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
+      "id": "extract-args", "name": "Argümanları Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE appointments SET status = 'iptal', updated_at = NOW() WHERE patient_phone = '{{ $json.phone }}' AND status != 'iptal' RETURNING id, patient_name",
-        "options": {}
+        "conditions": { "options": {}, "conditions": [{ "id": "no-error", "leftValue": "={{ $json.error }}", "rightValue": false, "operator": { "type": "boolean", "operation": "equals" } }], "combinator": "and" }
       },
-      "id": "cancel-appointment-db", "name": "Randevu İptal Et", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [680, 300],
-      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
+      "id": "check-validation", "name": "Doğrulama Geçerli?", "type": "n8n-nodes-base.if", "typeVersion": 2, "position": [680, 300]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO notifications (title, description, is_read) VALUES ('Randevu İptal', '{{ $json.patient_name }} randevusunu iptal etti', false)",
-        "options": {}
+        "query": "SELECT id, patient_name, doctor_name, appointment_date, appointment_time FROM appointments WHERE (patient_phone = $1 OR patient_name ILIKE '%' || $2 || '%') AND status != 'iptal' ORDER BY appointment_date DESC LIMIT 1",
+        "options": { "queryBatching": "independently", "queryReplacement": "={{ [$json.phone || '', $json.patientName || ''] }}" }
       },
-      "id": "insert-cancel-notification", "name": "Bildirim Ekle", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [900, 300],
+      "id": "find-appointment", "name": "Randevuyu Bul", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [900, 200],
       "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
     },
     {
       "parameters": {
-        "jsCode": "const toolCallId = $('Argümanları Çıkar').first().json.toolCallId;\nconst cancelled = $('Randevu İptal Et').all().map(i => i.json).filter(r => r.id);\nif (cancelled.length === 0) {\n  return [{ json: { toolCallId, result: 'Aktif randevunuz bulunamadı. Lütfen telefon numaranızı kontrol edin.' } }];\n}\nreturn [{ json: { toolCallId, result: 'Randevunuz başarıyla iptal edildi. Başka bir konuda yardımcı olabilir miyim?' } }];"
+        "conditions": { "options": {}, "conditions": [{ "id": "found", "leftValue": "={{ $input.all().filter(i => i.json.id).length }}", "rightValue": 0, "operator": { "type": "number", "operation": "notEquals" } }], "combinator": "and" }
       },
-      "id": "format-cancel-response", "name": "Yanıt Formatla", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1120, 300]
+      "id": "check-found", "name": "Randevu Bulundu Mu?", "type": "n8n-nodes-base.if", "typeVersion": 2, "position": [1120, 200]
     },
     {
       "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { results: [{ toolCallId: $json.toolCallId, result: $json.result }] } }}"
+        "operation": "executeQuery",
+        "query": "UPDATE appointments SET status = 'iptal', updated_at = NOW() WHERE id = $1 RETURNING id, patient_name, doctor_name, appointment_date, appointment_time",
+        "options": { "queryBatching": "independently", "queryReplacement": "={{ [$json.id] }}" }
       },
-      "id": "respond-cancel", "name": "Yanıt Ver", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1340, 300]
+      "id": "update-status", "name": "Durumu Güncelle", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [1340, 100],
+      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const toolCallId = $('Argümanları Çıkar').first().json.toolCallId;\nconst appt = $input.first().json;\nreturn [{ json: { toolCallId, result: `${appt.patient_name} adlı hastanın ${appt.appointment_date} tarihinde ${appt.doctor_name} ile olan randevusu başarıyla iptal edildi.` } }];"
+      },
+      "id": "format-cancelled", "name": "İptal Yanıtı", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1560, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const toolCallId = $('Argümanları Çıkar').first().json.toolCallId;\nreturn [{ json: { toolCallId, result: 'Belirtilen bilgilerle aktif bir randevu bulunamadı. Randevu bilgilerinizi kontrol eder misiniz?' } }];"
+      },
+      "id": "format-not-found", "name": "Bulunamadı Yanıtı", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nreturn [{ json: { toolCallId: data.toolCallId, result: data.result } }];"
+      },
+      "id": "pass-validation-error", "name": "Doğrulama Hatası", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [900, 400]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ { results: [{ toolCallId: $json.toolCallId, result: $json.result }] } }}" },
+      "id": "respond-node", "name": "Yanıt Ver", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1780, 300]
     }
   ],
   "connections": {
     "Webhook": { "main": [[{ "node": "Argümanları Çıkar", "type": "main", "index": 0 }]] },
-    "Argümanları Çıkar": { "main": [[{ "node": "Randevu İptal Et", "type": "main", "index": 0 }]] },
-    "Randevu İptal Et": { "main": [[{ "node": "Bildirim Ekle", "type": "main", "index": 0 }]] },
-    "Bildirim Ekle": { "main": [[{ "node": "Yanıt Formatla", "type": "main", "index": 0 }]] },
-    "Yanıt Formatla": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] }
+    "Argümanları Çıkar": { "main": [[{ "node": "Doğrulama Geçerli?", "type": "main", "index": 0 }]] },
+    "Doğrulama Geçerli?": { "main": [[{ "node": "Randevuyu Bul", "type": "main", "index": 0 }], [{ "node": "Doğrulama Hatası", "type": "main", "index": 0 }]] },
+    "Randevuyu Bul": { "main": [[{ "node": "Randevu Bulundu Mu?", "type": "main", "index": 0 }]] },
+    "Randevu Bulundu Mu?": { "main": [[{ "node": "Durumu Güncelle", "type": "main", "index": 0 }], [{ "node": "Bulunamadı Yanıtı", "type": "main", "index": 0 }]] },
+    "Durumu Güncelle": { "main": [[{ "node": "İptal Yanıtı", "type": "main", "index": 0 }]] },
+    "İptal Yanıtı": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] },
+    "Bulunamadı Yanıtı": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] },
+    "Doğrulama Hatası": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] }
   },
   "active": true,
-  "settings": { "executionOrder": "v1" },
-  "tags": ["klinik-ai", "cancel", "vapi"]
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "tags": ["klinik-ai", "vapi", "cancel"]
 }

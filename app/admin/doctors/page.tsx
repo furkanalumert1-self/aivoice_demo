@@ -34,9 +34,7 @@ export default async function DoctorsPage() {
 
       {dbError && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Veritabanı şeması güncellenmesi gerekiyor. Neon Console&apos;da{" "}
-          <code className="font-mono text-xs bg-amber-100 px-1 rounded">drizzle/0002_new_tables.sql</code>{" "}
-          dosyasını çalıştırın.
+          Doktor verileri şu an yüklenemiyor. Lütfen sayfayı yenileyin veya daha sonra tekrar deneyin.
         </div>
       )}
 

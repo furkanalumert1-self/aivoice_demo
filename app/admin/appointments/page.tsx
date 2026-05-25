@@ -28,9 +28,7 @@ export default async function AppointmentsPage() {
 
       {dbError && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Veri yüklenemedi. Neon Console'da{" "}
-          <code className="font-mono text-xs bg-amber-100 px-1 rounded">drizzle/0002_new_tables.sql</code>{" "}
-          çalıştırın.
+          Randevu verileri şu an yüklenemiyor. Lütfen sayfayı yenileyin veya daha sonra tekrar deneyin.
         </div>
       )}
 

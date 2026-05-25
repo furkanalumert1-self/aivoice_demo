@@ -2,60 +2,80 @@
   "name": "Klinik AI - Randevu Oluştur",
   "nodes": [
     {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "create-appointment",
-        "responseMode": "responseNode",
-        "options": {}
-      },
-      "id": "webhook-create", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 300]
+      "parameters": { "httpMethod": "POST", "path": "create-appointment", "responseMode": "responseNode", "options": {} },
+      "id": "webhook-node", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 300]
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst toolCallList = body?.message?.toolCallList || [];\nconst toolCall = toolCallList[0] || {};\nconst toolCallId = toolCall.id || 'unknown';\nlet args = {};\ntry { args = JSON.parse(toolCall.function?.arguments || '{}'); } catch(e) { args = {}; }\nreturn [{ json: { toolCallId, patientName: args.patientName || '', phone: args.phone || '', doctorName: args.doctorName || '', appointmentDate: args.appointmentDate || '', appointmentTime: args.appointmentTime || '', notes: args.notes || '' } }];"
+        "jsCode": "try {\n  const body = $input.first().json.body || $input.first().json;\n  const toolCallList = body?.message?.toolCallList || [];\n  if (toolCallList.length === 0) throw new Error('empty toolCallList');\n  const toolCall = toolCallList[0];\n  const toolCallId = toolCall.id || 'unknown';\n  let args = {};\n  try { args = typeof toolCall.function?.arguments === 'string' ? JSON.parse(toolCall.function.arguments) : (toolCall.function?.arguments || {}); } catch(e) { args = {}; }\n  const patientName = (args.patientName || '').trim();\n  const phone = (args.phone || args.patientPhone || '').trim();\n  const doctorName = (args.doctorName || '').trim();\n  const appointmentDate = (args.appointmentDate || '').trim();\n  const appointmentTime = (args.appointmentTime || '').trim();\n  const notes = (args.notes || '').trim();\n  if (!patientName || !phone || !doctorName || !appointmentDate || !appointmentTime) {\n    return [{ json: { toolCallId, error: true, result: 'Randevu oluşturmak için hasta adı, telefon, doktor adı, tarih ve saat bilgisi gereklidir.' } }];\n  }\n  return [{ json: { toolCallId, patientName, phone, doctorName, appointmentDate, appointmentTime, notes, error: false } }];\n} catch(e) {\n  return [{ json: { toolCallId: 'unknown', error: true, result: 'İsteğinizi işlerken bir hata oluştu. Lütfen tekrar deneyin.' } }];\n}"
       },
-      "id": "extract-args-create", "name": "Argümanları Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
+      "id": "extract-args", "name": "Argümanları Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO appointments (patient_name, patient_phone, doctor_name, appointment_date, appointment_time, appointment_at, status, source)\nVALUES ('{{ $json.patientName }}', '{{ $json.phone }}', '{{ $json.doctorName }}', '{{ $json.appointmentDate }}', '{{ $json.appointmentTime }}', NOW(), 'onaylandi', 'voice_agent')\nRETURNING id",
-        "options": {}
+        "conditions": { "options": {}, "conditions": [{ "id": "no-error", "leftValue": "={{ $json.error }}", "rightValue": false, "operator": { "type": "boolean", "operation": "equals" } }], "combinator": "and" }
       },
-      "id": "insert-appointment", "name": "Randevu Ekle", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [680, 300],
-      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
+      "id": "check-validation", "name": "Doğrulama Geçerli?", "type": "n8n-nodes-base.if", "typeVersion": 2, "position": [680, 300]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO ai_actions (action_type, payload, result) VALUES ('create_appointment', '{\"patientName\": \"{{ $('Argümanları Çıkar').first().json.patientName }}\"}', 'Randevu oluşturuldu')",
-        "options": {}
+        "query": "SELECT id FROM appointments WHERE doctor_name ILIKE '%' || $1 || '%' AND appointment_date = $2 AND appointment_time = $3 AND status != 'iptal' LIMIT 1",
+        "options": { "queryBatching": "independently", "queryReplacement": "={{ [$json.doctorName, $json.appointmentDate, $json.appointmentTime] }}" }
       },
-      "id": "log-ai-action", "name": "AI Aksiyonu Kaydet", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [900, 300],
+      "id": "check-duplicate", "name": "Duplicate Kontrol", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [900, 200],
       "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
     },
     {
       "parameters": {
-        "jsCode": "const toolCallId = $('Argümanları Çıkar').first().json.toolCallId;\nconst doctorName = $('Argümanları Çıkar').first().json.doctorName;\nconst appointmentDate = $('Argümanları Çıkar').first().json.appointmentDate;\nconst appointmentTime = $('Argümanları Çıkar').first().json.appointmentTime;\nconst patientName = $('Argümanları Çıkar').first().json.patientName;\nreturn [{ json: { toolCallId, result: `Randevu başarıyla oluşturuldu. ${patientName} için ${doctorName} ile ${appointmentDate} tarihinde saat ${appointmentTime}.` } }];"
+        "conditions": { "options": {}, "conditions": [{ "id": "is-dup", "leftValue": "={{ $input.all().filter(i => i.json.id).length }}", "rightValue": 0, "operator": { "type": "number", "operation": "equals" } }], "combinator": "and" }
       },
-      "id": "format-create-response", "name": "Yanıt Formatla", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1120, 300]
+      "id": "check-duplicate-if", "name": "Slot Boş Mu?", "type": "n8n-nodes-base.if", "typeVersion": 2, "position": [1120, 200]
     },
     {
       "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { results: [{ toolCallId: $json.toolCallId, result: $json.result }] } }}"
+        "operation": "executeQuery",
+        "query": "INSERT INTO appointments (patient_name, patient_phone, doctor_name, appointment_date, appointment_time, appointment_at, status, source) VALUES ($1, $2, $3, $4, $5, NOW(), 'onaylandi', 'voice_agent') RETURNING id",
+        "options": { "queryBatching": "independently", "queryReplacement": "={{ [$('Argümanları Çıkar').first().json.patientName, $('Argümanları Çıkar').first().json.phone, $('Argümanları Çıkar').first().json.doctorName, $('Argümanları Çıkar').first().json.appointmentDate, $('Argümanları Çıkar').first().json.appointmentTime] }}" }
       },
-      "id": "respond-create", "name": "Yanıt Ver", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1340, 300]
+      "id": "insert-appointment", "name": "Randevu Ekle", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [1340, 100],
+      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ex = $('Argümanları Çıkar').first().json;\nreturn [{ json: { toolCallId: ex.toolCallId, result: `Randevu başarıyla oluşturuldu. ${ex.patientName} için ${ex.doctorName} ile ${ex.appointmentDate} tarihinde saat ${ex.appointmentTime}. Randevu numaranız kaydedildi.` } }];"
+      },
+      "id": "format-success", "name": "Başarı Yanıtı", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1560, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ex = $('Argümanları Çıkar').first().json;\nreturn [{ json: { toolCallId: ex.toolCallId, result: `${ex.doctorName} doktorunun ${ex.appointmentDate} tarihinde saat ${ex.appointmentTime} saati maalesef dolu. Farklı bir saat tercih eder misiniz?` } }];"
+      },
+      "id": "format-duplicate", "name": "Çakışma Yanıtı", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nreturn [{ json: { toolCallId: data.toolCallId, result: data.result } }];"
+      },
+      "id": "pass-validation-error", "name": "Doğrulama Hatası", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [900, 400]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ { results: [{ toolCallId: $json.toolCallId, result: $json.result }] } }}" },
+      "id": "respond-node", "name": "Yanıt Ver", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1780, 300]
     }
   ],
   "connections": {
     "Webhook": { "main": [[{ "node": "Argümanları Çıkar", "type": "main", "index": 0 }]] },
-    "Argümanları Çıkar": { "main": [[{ "node": "Randevu Ekle", "type": "main", "index": 0 }]] },
-    "Randevu Ekle": { "main": [[{ "node": "AI Aksiyonu Kaydet", "type": "main", "index": 0 }]] },
-    "AI Aksiyonu Kaydet": { "main": [[{ "node": "Yanıt Formatla", "type": "main", "index": 0 }]] },
-    "Yanıt Formatla": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] }
+    "Argümanları Çıkar": { "main": [[{ "node": "Doğrulama Geçerli?", "type": "main", "index": 0 }]] },
+    "Doğrulama Geçerli?": { "main": [[{ "node": "Duplicate Kontrol", "type": "main", "index": 0 }], [{ "node": "Doğrulama Hatası", "type": "main", "index": 0 }]] },
+    "Duplicate Kontrol": { "main": [[{ "node": "Slot Boş Mu?", "type": "main", "index": 0 }]] },
+    "Slot Boş Mu?": { "main": [[{ "node": "Randevu Ekle", "type": "main", "index": 0 }], [{ "node": "Çakışma Yanıtı", "type": "main", "index": 0 }]] },
+    "Randevu Ekle": { "main": [[{ "node": "Başarı Yanıtı", "type": "main", "index": 0 }]] },
+    "Başarı Yanıtı": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] },
+    "Çakışma Yanıtı": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] },
+    "Doğrulama Hatası": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] }
   },
   "active": true,
-  "settings": { "executionOrder": "v1" },
-  "tags": ["klinik-ai", "appointment", "vapi"]
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "tags": ["klinik-ai", "vapi", "appointment"]
 }

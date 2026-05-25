@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { callbackRequests, aiActions, notifications } from "@/db/schema";
+import { callbackRequests, aiActions } from "@/db/schema";
 
 export async function POST(req: NextRequest) {
   try {
@@ -43,27 +43,6 @@ export async function POST(req: NextRequest) {
       payload: { patientName: patientName ?? null, phone, reason: reason ?? null },
       result: `Geri arama talebi alındı. ID: ${newCallback.id}`,
     });
-
-    // Create notification
-    await db.insert(notifications).values({
-      title: "Geri Arama Talebi",
-      description: `${patientName ?? "Bilinmeyen hasta"} (${phone}) geri arama talep etti.${reason ? ` Neden: ${reason}` : ""}`,
-      isRead: false,
-    });
-
-    // Trigger n8n webhook if configured
-    const n8nBase = process.env.N8N_WEBHOOK_BASE_URL;
-    if (n8nBase) {
-      try {
-        await fetch(`${n8nBase}/webhook/callback-request`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(newCallback),
-        });
-      } catch (webhookError) {
-        console.error("n8n webhook failed:", webhookError);
-      }
-    }
 
     return NextResponse.json({
       results: [

@@ -3,51 +3,55 @@
   "nodes": [
     {
       "parameters": { "httpMethod": "POST", "path": "callback-request", "responseMode": "responseNode", "options": {} },
-      "id": "webhook-callback", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 300]
+      "id": "webhook-node", "name": "Webhook", "type": "n8n-nodes-base.webhook", "typeVersion": 2, "position": [240, 300]
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst toolCall = body?.message?.toolCallList?.[0] || {};\nconst toolCallId = toolCall.id || 'unknown';\nlet args = {};\ntry { args = JSON.parse(toolCall.function?.arguments || '{}'); } catch(e) { args = {}; }\nreturn [{ json: { toolCallId, patientName: args.patientName || null, phone: args.phone || '', reason: args.reason || null } }];"
+        "jsCode": "try {\n  const body = $input.first().json.body || $input.first().json;\n  const toolCallList = body?.message?.toolCallList || [];\n  if (toolCallList.length === 0) throw new Error('empty toolCallList');\n  const toolCall = toolCallList[0];\n  const toolCallId = toolCall.id || 'unknown';\n  let args = {};\n  try { args = typeof toolCall.function?.arguments === 'string' ? JSON.parse(toolCall.function.arguments) : (toolCall.function?.arguments || {}); } catch(e) { args = {}; }\n  const phone = (args.phone || args.patientPhone || '').trim();\n  const patientName = (args.patientName || '').trim();\n  const reason = (args.reason || '').trim();\n  if (!phone) {\n    return [{ json: { toolCallId, error: true, result: 'Geri arama talebi için telefon numarası gereklidir.' } }];\n  }\n  return [{ json: { toolCallId, phone, patientName, reason, error: false } }];\n} catch(e) {\n  return [{ json: { toolCallId: 'unknown', error: true, result: 'İsteğinizi işlerken bir hata oluştu. Lütfen tekrar deneyin.' } }];\n}"
       },
-      "id": "extract-args-callback", "name": "Argümanları Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
+      "id": "extract-args", "name": "Argümanları Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": { "options": {}, "conditions": [{ "id": "no-error", "leftValue": "={{ $json.error }}", "rightValue": false, "operator": { "type": "boolean", "operation": "equals" } }], "combinator": "and" }
+      },
+      "id": "check-validation", "name": "Doğrulama Geçerli?", "type": "n8n-nodes-base.if", "typeVersion": 2, "position": [680, 300]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO callback_requests (patient_name, phone, reason, status) VALUES ('{{ $json.patientName }}', '{{ $json.phone }}', '{{ $json.reason }}', 'bekliyor') RETURNING id",
-        "options": {}
+        "query": "INSERT INTO callback_requests (patient_name, phone, reason, status, requested_at) VALUES ($1, $2, $3, 'bekliyor', NOW()) RETURNING id",
+        "options": { "queryBatching": "independently", "queryReplacement": "={{ [$json.patientName || 'Bilinmiyor', $json.phone, $json.reason || 'Belirtilmedi'] }}" }
       },
-      "id": "insert-callback", "name": "Geri Arama Ekle", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [680, 300],
+      "id": "insert-callback", "name": "Geri Arama Kaydet", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [900, 200],
       "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO notifications (title, description, is_read) VALUES ('Geri Arama Talebi', '{{ $('Argümanları Çıkar').first().json.patientName || 'Bilinmeyen hasta' }} ({{ $('Argümanları Çıkar').first().json.phone }}) geri arama talep etti.', false)",
-        "options": {}
+        "jsCode": "const toolCallId = $('Argümanları Çıkar').first().json.toolCallId;\nconst phone = $('Argümanları Çıkar').first().json.phone;\nreturn [{ json: { toolCallId, result: `Geri arama talebiniz alındı. ${phone} numaranız kaydedildi. Ekibimiz en kısa sürede sizi arayacaktır.` } }];"
       },
-      "id": "create-callback-notification", "name": "Bildirim Oluştur", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [900, 300],
-      "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
+      "id": "format-success", "name": "Başarı Yanıtı", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1120, 200]
     },
     {
       "parameters": {
-        "jsCode": "const toolCallId = $('Argümanları Çıkar').first().json.toolCallId;\nconst phone = $('Argümanları Çıkar').first().json.phone;\nreturn [{ json: { toolCallId, result: `Geri arama talebiniz alındı. En kısa sürede ${phone} numaranızdan sizi arayacağız.` } }];"
+        "jsCode": "const data = $input.first().json;\nreturn [{ json: { toolCallId: data.toolCallId, result: data.result } }];"
       },
-      "id": "format-callback-response", "name": "Yanıt Formatla", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1120, 300]
+      "id": "pass-validation-error", "name": "Doğrulama Hatası", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [900, 400]
     },
     {
       "parameters": { "respondWith": "json", "responseBody": "={{ { results: [{ toolCallId: $json.toolCallId, result: $json.result }] } }}" },
-      "id": "respond-callback", "name": "Yanıt Ver", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1340, 300]
+      "id": "respond-node", "name": "Yanıt Ver", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1340, 300]
     }
   ],
   "connections": {
     "Webhook": { "main": [[{ "node": "Argümanları Çıkar", "type": "main", "index": 0 }]] },
-    "Argümanları Çıkar": { "main": [[{ "node": "Geri Arama Ekle", "type": "main", "index": 0 }]] },
-    "Geri Arama Ekle": { "main": [[{ "node": "Bildirim Oluştur", "type": "main", "index": 0 }]] },
-    "Bildirim Oluştur": { "main": [[{ "node": "Yanıt Formatla", "type": "main", "index": 0 }]] },
-    "Yanıt Formatla": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] }
+    "Argümanları Çıkar": { "main": [[{ "node": "Doğrulama Geçerli?", "type": "main", "index": 0 }]] },
+    "Doğrulama Geçerli?": { "main": [[{ "node": "Geri Arama Kaydet", "type": "main", "index": 0 }], [{ "node": "Doğrulama Hatası", "type": "main", "index": 0 }]] },
+    "Geri Arama Kaydet": { "main": [[{ "node": "Başarı Yanıtı", "type": "main", "index": 0 }]] },
+    "Başarı Yanıtı": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] },
+    "Doğrulama Hatası": { "main": [[{ "node": "Yanıt Ver", "type": "main", "index": 0 }]] }
   },
   "active": true,
-  "settings": { "executionOrder": "v1" },
-  "tags": ["klinik-ai", "callback", "vapi"]
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "tags": ["klinik-ai", "vapi", "callback"]
 }

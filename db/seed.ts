@@ -236,20 +236,6 @@ async function seed() {
   }
   console.log("Inserted 5 callback requests");
 
-  // --- NOTIFICATIONS ---
-  const notificationData = [
-    { title: "Yeni Randevu Alındı", description: "Ahmet Yıldız, Dr. Ayşe Kaya ile Pazartesi 10:00 için randevu aldı.", isRead: false },
-    { title: "Randevu İptal Edildi", description: "Zeynep Arslan'ın Salı 14:00 randevusu iptal edildi.", isRead: true },
-    { title: "Yüksek Çağrı Hacmi", description: "Bu saat bugün normalden %40 daha fazla çağrı var.", isRead: false },
-    { title: "Sistem Güncellemesi", description: "AI asistan modeli güncellendi. Yeni özellikler aktif.", isRead: true },
-    { title: "Randevu Hatırlatıcısı", description: "Yarın 8 randevu bulunmakta. Otomatik hatırlatıcılar gönderildi.", isRead: false },
-  ];
-
-  for (const notif of notificationData) {
-    await db.insert(schema.notifications).values(notif);
-  }
-  console.log("Inserted 5 notifications");
-
   console.log("Seeding complete!");
   process.exit(0);
 }
