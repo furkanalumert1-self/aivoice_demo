@@ -4,7 +4,8 @@ import { db } from "@/db";
 import { callLogs } from "@/db/schema";
 import { sql } from "drizzle-orm";
 import { formatDateTime, formatDuration } from "@/lib/utils";
-import { Phone, Play } from "lucide-react";
+import { Phone, Play, ExternalLink } from "lucide-react";
+import Link from "next/link";
 
 const intentConfig: Record<string, { label: string; className: string }> = {
   randevu_alma: {
@@ -67,12 +68,13 @@ export default async function CallsPage() {
                 <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Özet</th>
                 <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Niyet</th>
                 <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Kayıt</th>
+                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-500"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {callRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-16 text-center">
+                  <td colSpan={7} className="px-5 py-16 text-center">
                     <Phone className="h-10 w-10 mx-auto mb-3 text-gray-200" />
                     <p className="text-sm text-gray-400">
                       {dbError ? "Veritabanı hatası" : "Henüz çağrı kaydı bulunmuyor"}
@@ -124,6 +126,15 @@ export default async function CallsPage() {
                         ) : (
                           <span className="text-gray-300 text-xs">—</span>
                         )}
+                      </td>
+                      <td className="px-5 py-4">
+                        <Link
+                          href={`/admin/calls/${call.id}`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Detay
+                        </Link>
                       </td>
                     </tr>
                   );

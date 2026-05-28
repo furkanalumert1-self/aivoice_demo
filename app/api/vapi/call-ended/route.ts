@@ -4,17 +4,38 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { calls, callLogs } from "@/db/schema";
 
-interface VapiMessage {
-  type: string;
-  call?: {
-    id: string;
-    customer?: { number?: string };
-    startedAt?: string;
-    endedAt?: string;
-    cost?: number;
-    artifact?: { transcript?: string; recordingUrl?: string };
-    analysis?: { summary?: string };
+interface VapiCallData {
+  id?: string;
+  customer?: { number?: string };
+  phoneNumber?: { number?: string };
+  startedAt?: string;
+  endedAt?: string;
+  cost?: number;
+}
+
+interface VapiArtifact {
+  transcript?: string;
+  recordingUrl?: string;
+}
+
+interface VapiAnalysis {
+  summary?: string;
+  structuredData?: { intent?: string };
+}
+
+interface VapiPayload {
+  message?: {
+    type?: string;
+    call?: VapiCallData;
+    artifact?: VapiArtifact;
+    analysis?: VapiAnalysis;
+    endedReason?: string;
   };
+  // Some VAPI versions send flat (not nested under message)
+  type?: string;
+  call?: VapiCallData;
+  artifact?: VapiArtifact;
+  analysis?: VapiAnalysis;
 }
 
 function calculateDuration(startedAt?: string, endedAt?: string): number | null {
@@ -28,58 +49,74 @@ function generateSummary(transcript?: string): string {
   return words.slice(0, 50).join(" ") + (words.length > 50 ? "..." : "");
 }
 
-function detectIntent(transcript?: string): string {
-  if (!transcript) return "diger";
-  const lower = transcript.toLowerCase();
-  if (lower.includes("randevu") && (lower.includes("almak") || lower.includes("oluştur") || lower.includes("aldım"))) return "randevu_alma";
-  if (lower.includes("iptal")) return "randevu_iptal";
-  if (lower.includes("geri ara") || lower.includes("geri arama")) return "geri_arama";
-  if (lower.includes("bilgi") || lower.includes("sigorta") || lower.includes("çalışma")) return "bilgi";
+function detectIntent(transcript?: string, summary?: string): string {
+  const text = ((transcript ?? "") + " " + (summary ?? "")).toLowerCase();
+  if (!text.trim()) return "diger";
+  if (text.includes("randevu") && (text.includes("aldım") || text.includes("oluştur") || text.includes("almak") || text.includes("alındı"))) return "randevu_alma";
+  if (text.includes("iptal") || text.includes("iptal ettim")) return "randevu_iptal";
+  if (text.includes("ertele") || text.includes("taşı") || text.includes("değiştir") || text.includes("reschedule")) return "randevu_alma";
+  if (text.includes("geri ara") || text.includes("geri arama") || text.includes("tekrar ara")) return "geri_arama";
+  if (text.includes("bilgi") || text.includes("saat") || text.includes("sigorta") || text.includes("çalışma") || text.includes("doktor")) return "bilgi";
   return "diger";
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body: VapiMessage = await req.json();
+    const body: VapiPayload = await req.json();
 
-    if (body.type !== "end-of-call-report") {
+    // VAPI wraps payload under message; some versions send flat
+    const msg = body.message ?? body;
+    if (msg.type && msg.type !== "end-of-call-report") {
       return NextResponse.json({ received: true });
     }
 
-    const callData = body.call;
-    if (!callData) {
-      return NextResponse.json({ error: "Call data missing" }, { status: 400 });
-    }
+    const callData: VapiCallData = msg.call ?? {};
+    const artifact: VapiArtifact = msg.artifact ?? {};
+    const analysis: VapiAnalysis = msg.analysis ?? {};
+
+    const callerNumber =
+      callData.customer?.number ??
+      callData.phoneNumber?.number ??
+      "Bilinmiyor";
 
     const duration = calculateDuration(callData.startedAt, callData.endedAt);
-    const transcript = callData.artifact?.transcript;
-    const summary = callData.analysis?.summary ?? generateSummary(transcript);
-    const cost = callData.cost?.toFixed(6);
-    const intent = detectIntent(transcript);
+    const transcript = artifact.transcript ?? null;
+    const summary = analysis.summary ?? generateSummary(transcript ?? undefined);
+    const intent =
+      analysis.structuredData?.intent ??
+      detectIntent(transcript ?? undefined, summary);
+    const recordingUrl = artifact.recordingUrl ?? null;
+    const cost = callData.cost != null ? String(callData.cost.toFixed(6)) : null;
+    const vapiCallId = callData.id ?? null;
 
     const [savedCallLog] = await db
       .insert(callLogs)
       .values({
-        callerNumber: callData.customer?.number ?? "Bilinmiyor",
-        vapiCallId: callData.id,
-        transcript: transcript ?? null,
+        callerNumber,
+        vapiCallId,
+        transcript,
         summary,
         duration,
         intent,
         callStatus: "completed",
-        cost: cost ?? null,
-        recordingUrl: callData.artifact?.recordingUrl ?? null,
+        cost,
+        recordingUrl,
+      })
+      .onConflictDoUpdate({
+        target: callLogs.vapiCallId,
+        set: { summary, intent, duration, callStatus: "completed", recordingUrl },
       })
       .returning();
 
+    // Keep legacy calls table in sync
     await db.insert(calls).values({
-      callerPhone: callData.customer?.number ?? "Bilinmiyor",
+      callerPhone: callerNumber,
       durationSeconds: duration,
-      transcript: transcript ?? null,
+      transcript,
       summary,
-      cost: cost ?? null,
+      cost,
       outcome: intent,
-      recordingUrl: callData.artifact?.recordingUrl ?? null,
+      recordingUrl,
     });
 
     return NextResponse.json({ success: true, callLogId: savedCallLog.id });

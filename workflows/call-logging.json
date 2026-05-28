@@ -7,7 +7,7 @@
     },
     {
       "parameters": {
-        "jsCode": "try {\n  const body = $input.first().json.body || $input.first().json;\n  const message = body?.message || body || {};\n  const call = message.call || {};\n  const analysis = message.analysis || {};\n  const artifact = message.artifact || {};\n\n  const vapiCallId = (call.id || body.call_id || '').trim();\n  const callerNumber = (call.customer?.number || call.callerNumber || body.caller_number || '').trim();\n  const duration = parseInt(call.endedAt && call.startedAt ? (new Date(call.endedAt) - new Date(call.startedAt)) / 1000 : (body.duration || 0));\n  const transcript = artifact.transcript || body.transcript || '';\n  const summary = analysis.summary || body.summary || '';\n  const intent = analysis.structuredData?.intent || body.intent || 'diger';\n  const callStatus = message.endedReason === 'assistant-error' ? 'failed' : 'completed';\n  const recordingUrl = artifact.recordingUrl || body.recording_url || '';\n  const cost = parseFloat(call.cost || body.cost || 0) || null;\n\n  return [{ json: { vapiCallId, callerNumber, duration, transcript, summary, intent, callStatus, recordingUrl, cost, error: false } }];\n} catch(e) {\n  return [{ json: { error: true, message: String(e) } }];\n}"
+        "jsCode": "try {\n  const body = $input.first().json.body || $input.first().json;\n  // VAPI wraps payload under message; some direct calls are flat\n  const msg = body.message || body;\n\n  const callData = msg.call || {};\n  const artifact = msg.artifact || {};\n  const analysis = msg.analysis || {};\n\n  // Extract caller number from multiple possible fields\n  const callerNumber = (\n    callData.customer?.number ||\n    callData.phoneNumber?.number ||\n    body.phoneNumber ||\n    body.caller_number ||\n    ''\n  ).trim();\n\n  // Extract VAPI call ID\n  const vapiCallId = (callData.id || body.call_id || '').trim() || null;\n\n  // Calculate duration from timestamps or use provided value\n  let duration = 0;\n  if (callData.startedAt && callData.endedAt) {\n    duration = Math.round((new Date(callData.endedAt) - new Date(callData.startedAt)) / 1000);\n  } else if (callData.duration) {\n    duration = parseInt(callData.duration);\n  } else if (body.durationSeconds) {\n    duration = parseInt(body.durationSeconds);\n  }\n\n  const transcript = artifact.transcript || body.transcript || '';\n  const summary = analysis.summary || body.summary || '';\n  const recordingUrl = (artifact.recordingUrl || body.recording_url || '').trim() || null;\n  const cost = parseFloat(callData.cost || body.cost || 0) || null;\n  const callStatus = msg.endedReason === 'assistant-error' ? 'failed' : 'completed';\n\n  // Intent classification from transcript + summary\n  const text = (transcript + ' ' + summary).toLowerCase();\n  let intent = 'diger';\n  if (text.includes('randevu') && (text.includes('aldım') || text.includes('oluştur') || text.includes('alındı') || text.includes('almak'))) {\n    intent = 'randevu_alma';\n  } else if (text.includes('iptal') || text.includes('iptal ettim')) {\n    intent = 'randevu_iptal';\n  } else if (text.includes('ertele') || text.includes('taşı') || text.includes('değiştir')) {\n    intent = 'randevu_alma';\n  } else if (text.includes('geri ara') || text.includes('geri arama')) {\n    intent = 'geri_arama';\n  } else if (text.includes('bilgi') || text.includes('saat') || text.includes('doktor') || text.includes('uzman')) {\n    intent = 'bilgi';\n  }\n\n  // Use analysis.structuredData.intent if provided by VAPI\n  if (analysis.structuredData?.intent) {\n    intent = analysis.structuredData.intent;\n  }\n\n  return [{ json: { vapiCallId, callerNumber, duration, transcript, summary, intent, callStatus, recordingUrl, cost, error: false } }];\n} catch(e) {\n  return [{ json: { error: true, message: String(e) } }];\n}"
       },
       "id": "extract-call-data", "name": "Çağrı Verisini Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [460, 300]
     },
@@ -20,8 +20,8 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO call_logs (caller_number, vapi_call_id, transcript, summary, duration, intent, call_status, recording_url, cost) VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7, NULLIF($8, ''), $9) ON CONFLICT (vapi_call_id) DO UPDATE SET summary = EXCLUDED.summary, intent = EXCLUDED.intent, duration = EXCLUDED.duration, call_status = EXCLUDED.call_status RETURNING id",
-        "options": { "queryBatching": "independently", "queryReplacement": "={{ [$json.callerNumber, $json.vapiCallId, $json.transcript, $json.summary, $json.duration || 0, $json.intent || 'diger', $json.callStatus || 'completed', $json.recordingUrl, $json.cost] }}" }
+        "query": "INSERT INTO call_logs (caller_number, vapi_call_id, transcript, summary, duration, intent, call_status, recording_url, cost) VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (vapi_call_id) DO UPDATE SET summary = EXCLUDED.summary, intent = EXCLUDED.intent, duration = EXCLUDED.duration, call_status = EXCLUDED.call_status, recording_url = COALESCE(EXCLUDED.recording_url, call_logs.recording_url) RETURNING id, caller_number, intent, duration",
+        "options": { "queryBatching": "independently", "queryReplacement": "={{ [$json.callerNumber || 'Bilinmiyor', $json.vapiCallId, $json.transcript || '', $json.summary || '', $json.duration || 0, $json.intent || 'diger', $json.callStatus || 'completed', $json.recordingUrl, $json.cost] }}" }
       },
       "id": "insert-call-log", "name": "Çağrı Logunu Kaydet", "type": "n8n-nodes-base.postgres", "typeVersion": 2.4, "position": [900, 200],
       "credentials": { "postgres": { "id": "neon-db", "name": "Neon PostgreSQL" } }
@@ -29,14 +29,14 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { success: true, id: $json.id } }}"
+        "responseBody": "={{ { success: true, id: $json.id, intent: $json.intent } }}"
       },
       "id": "respond-success", "name": "Başarı Yanıtı", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [1120, 200]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { success: false, error: 'Data extraction failed' } }}"
+        "responseBody": "={{ { success: false, error: $json.message || 'Data extraction failed' } }}"
       },
       "id": "respond-error", "name": "Hata Yanıtı", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [900, 400]
     }
