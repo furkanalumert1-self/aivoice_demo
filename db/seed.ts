@@ -124,7 +124,6 @@ async function seed() {
     const [record] = await db.insert(schema.appointments).values({
       patientName: patientNames[i],
       patientPhone: randomPhone(),
-      doctorId: doctor.id,
       doctorName: doctor.fullName,
       appointmentDate: dateStr,
       appointmentTime: timeStr,

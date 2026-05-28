@@ -32,14 +32,14 @@ export async function POST(req: NextRequest) {
     if (appointmentId) {
       const [result] = await db
         .update(appointments)
-        .set({ status: "iptal", updatedAt: new Date() })
+        .set({ status: "iptal" })
         .where(eq(appointments.id, appointmentId))
         .returning();
       cancelled = result;
     } else if (phone) {
       const [result] = await db
         .update(appointments)
-        .set({ status: "iptal", updatedAt: new Date() })
+        .set({ status: "iptal" })
         .where(eq(appointments.patientPhone, phone))
         .returning();
       cancelled = result;

@@ -15,8 +15,7 @@ export const doctors = pgTable("doctors", {
 export const appointments = pgTable("appointments", {
   id: uuid("id").defaultRandom().primaryKey(),
   patientName: text("patient_name").notNull(),
-  patientPhone: text("patient_phone").notNull(),
-  doctorId: uuid("doctor_id").references(() => doctors.id),
+  patientPhone: text("patient_phone"),
   doctorName: text("doctor_name"),
   appointmentDate: text("appointment_date"),
   appointmentTime: text("appointment_time"),
@@ -25,7 +24,6 @@ export const appointments = pgTable("appointments", {
   notes: text("notes"),
   source: text("source").default("voice_agent"),
   createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const callLogs = pgTable("call_logs", {

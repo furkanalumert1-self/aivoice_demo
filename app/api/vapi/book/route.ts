@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       params = toolCall?.function?.parameters ?? body;
     }
 
-    const { patientName, phone, doctorName, doctorId, date, time, notes } = params;
+    const { patientName, phone, doctorName, date, time, notes } = params;
 
     if (!patientName || !phone || !date || !time) {
       return NextResponse.json(
@@ -36,7 +36,6 @@ export async function POST(req: NextRequest) {
       .values({
         patientName,
         patientPhone: phone,
-        doctorId: doctorId ?? null,
         doctorName: doctorName ?? "Belirtilmedi",
         appointmentDate: datePart,
         appointmentTime: time,

@@ -2,20 +2,36 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/db";
 import { appointments } from "@/db/schema";
-import { sql } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { Calendar, User } from "lucide-react";
 
+type AppointmentRow = {
+  id: string;
+  patientName: string;
+  doctorName: string | null;
+  appointmentAt: Date | null;
+  status: string | null;
+  createdAt: Date | null;
+};
+
 export default async function AppointmentsPage() {
-  let appointmentRecords: typeof appointments.$inferSelect[] = [];
+  let appointmentRecords: AppointmentRow[] = [];
   let dbError = false;
 
   try {
     appointmentRecords = await db
-      .select()
+      .select({
+        id: appointments.id,
+        patientName: appointments.patientName,
+        doctorName: appointments.doctorName,
+        appointmentAt: appointments.appointmentAt,
+        status: appointments.status,
+        createdAt: appointments.createdAt,
+      })
       .from(appointments)
-      .orderBy(sql`${appointments.createdAt} desc`);
+      .orderBy(desc(appointments.createdAt));
   } catch (error) {
-    console.error("Appointments fetch error:", error);
+    console.error("APPOINTMENTS_ERROR", error);
     dbError = true;
   }
 
@@ -66,29 +82,23 @@ export default async function AppointmentsPage() {
                           </div>
                           <div>
                             <p className="font-medium text-gray-900">{appt.patientName ?? "-"}</p>
-                            <p className="text-xs text-gray-400">{appt.patientPhone ?? ""}</p>
                           </div>
                         </div>
                       </td>
                       <td className="px-5 py-4 text-gray-700">{appt.doctorName ?? "-"}</td>
                       <td className="px-5 py-4 text-gray-600">
-                        {appt.appointmentDate
-                          ? new Date(appt.appointmentDate + "T00:00:00").toLocaleDateString("tr-TR", {
-                              day: "numeric", month: "long", year: "numeric",
-                            })
-                          : appt.appointmentAt
+                        {appt.appointmentAt
                           ? new Date(appt.appointmentAt).toLocaleDateString("tr-TR", {
                               day: "numeric", month: "long", year: "numeric",
                             })
                           : "-"}
                       </td>
                       <td className="px-5 py-4 text-gray-600">
-                        {appt.appointmentTime ??
-                          (appt.appointmentAt
-                            ? new Date(appt.appointmentAt).toLocaleTimeString("tr-TR", {
-                                hour: "2-digit", minute: "2-digit",
-                              })
-                            : "-")}
+                        {appt.appointmentAt
+                          ? new Date(appt.appointmentAt).toLocaleTimeString("tr-TR", {
+                              hour: "2-digit", minute: "2-digit",
+                            })
+                          : "-"}
                       </td>
                       <td className="px-5 py-4">
                         <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
