@@ -39,7 +39,6 @@ export const callLogs = pgTable("call_logs", {
   callStatus: text("call_status").default("completed"),
   cost: numeric("cost"),
   recordingUrl: text("recording_url"),
-  appointmentId: uuid("appointment_id").references(() => appointments.id),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

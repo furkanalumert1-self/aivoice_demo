@@ -182,7 +182,6 @@ async function seed() {
       intent: intents[i % intents.length],
       callStatus: i < 8 ? "completed" : randomItem(callStatuses),
       cost: (0.02 + Math.random() * 0.18).toFixed(6),
-      appointmentId: linkedAppointment?.id ?? null,
       createdAt: randomDate(Math.floor(Math.random() * 7) - 3),
     }).returning();
     insertedCallLogs.push(record);

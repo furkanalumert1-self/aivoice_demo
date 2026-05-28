@@ -22,7 +22,6 @@ export async function GET(req: NextRequest) {
         callStatus: callLogs.callStatus,
         cost: callLogs.cost,
         vapiCallId: callLogs.vapiCallId,
-        appointmentId: callLogs.appointmentId,
         createdAt: callLogs.createdAt,
       })
       .from(callLogs)
