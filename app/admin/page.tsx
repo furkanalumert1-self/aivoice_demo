@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/db";
 import { callLogs, appointments } from "@/db/schema";
-import { sql, eq, gte, count, desc } from "drizzle-orm";
+import { sql, eq, count, desc } from "drizzle-orm";
 import { Phone, Calendar, Clock, XCircle } from "lucide-react";
 import { formatDuration, formatDateTime } from "@/lib/utils";
 import Link from "next/link";
@@ -18,8 +18,10 @@ const intentConfig: Record<string, { label: string; dot: string }> = {
 type RecentCall = {
   id: string;
   callerNumber: string | null;
-  intent: string | null;
+  summary: string | null;
   duration: number | null;
+  intent: string | null;
+  callStatus: string | null;
   createdAt: Date | null;
 };
 
@@ -27,6 +29,9 @@ type RecentAppointment = {
   id: string;
   patientName: string;
   doctorName: string | null;
+  appointmentDate: string | null;
+  appointmentTime: string | null;
+  createdAt: Date | null;
   status: string | null;
 };
 
@@ -51,21 +56,24 @@ const emptyStats: Stats = {
 async function getStats(): Promise<Stats> {
   const stats: Stats = { ...emptyStats };
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
   try {
-    const [{ count: n }] = await db.select({ count: count() }).from(callLogs).where(gte(callLogs.createdAt, today));
-    stats.todayCallCount = n;
+    const [row] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(callLogs)
+      .where(sql`date(${callLogs.createdAt}) = current_date`);
+    stats.todayCallCount = row?.n ?? 0;
   } catch (error) {
-    console.error("DASHBOARD_ERROR todayCallCount:", error);
+    console.error("DASHBOARD_CALLS_ERROR todayCallCount:", error);
   }
 
   try {
-    const [{ count: n }] = await db.select({ count: count() }).from(appointments).where(eq(appointments.source, "voice_agent"));
-    stats.aiAppointmentCount = n;
+    const [row] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(appointments)
+      .where(sql`date(${appointments.createdAt}) = current_date`);
+    stats.aiAppointmentCount = row?.n ?? 0;
   } catch (error) {
-    console.error("DASHBOARD_ERROR aiAppointmentCount:", error);
+    console.error("DASHBOARD_APPOINTMENTS_ERROR aiAppointmentCount:", error);
   }
 
   try {
@@ -74,14 +82,17 @@ async function getStats(): Promise<Stats> {
       .from(callLogs);
     stats.avgDuration = Math.round(row?.avg ?? 0);
   } catch (error) {
-    console.error("DASHBOARD_ERROR avgDuration:", error);
+    console.error("DASHBOARD_CALLS_ERROR avgDuration:", error);
   }
 
   try {
-    const [{ count: n }] = await db.select({ count: count() }).from(appointments).where(eq(appointments.status, "iptal"));
+    const [{ count: n }] = await db
+      .select({ count: count() })
+      .from(appointments)
+      .where(eq(appointments.status, "iptal"));
     stats.cancelledCount = n;
   } catch (error) {
-    console.error("DASHBOARD_ERROR cancelledCount:", error);
+    console.error("DASHBOARD_APPOINTMENTS_ERROR cancelledCount:", error);
   }
 
   try {
@@ -89,15 +100,17 @@ async function getStats(): Promise<Stats> {
       .select({
         id: callLogs.id,
         callerNumber: callLogs.callerNumber,
-        intent: callLogs.intent,
+        summary: callLogs.summary,
         duration: callLogs.duration,
+        intent: callLogs.intent,
+        callStatus: callLogs.callStatus,
         createdAt: callLogs.createdAt,
       })
       .from(callLogs)
       .orderBy(desc(callLogs.createdAt))
-      .limit(6);
+      .limit(5);
   } catch (error) {
-    console.error("DASHBOARD_ERROR recentCalls:", error);
+    console.error("DASHBOARD_CALLS_ERROR recentCalls:", error);
   }
 
   try {
@@ -106,13 +119,16 @@ async function getStats(): Promise<Stats> {
         id: appointments.id,
         patientName: appointments.patientName,
         doctorName: appointments.doctorName,
+        appointmentDate: appointments.appointmentDate,
+        appointmentTime: appointments.appointmentTime,
+        createdAt: appointments.createdAt,
         status: appointments.status,
       })
       .from(appointments)
       .orderBy(desc(appointments.createdAt))
-      .limit(6);
+      .limit(5);
   } catch (error) {
-    console.error("DASHBOARD_ERROR recentAppointments:", error);
+    console.error("DASHBOARD_APPOINTMENTS_ERROR recentAppointments:", error);
   }
 
   return stats;
@@ -249,7 +265,11 @@ export default async function AdminPage() {
                     <p className="text-sm font-medium text-gray-900 truncate">
                       {appt.patientName ?? "Bilinmiyor"}
                     </p>
-                    <p className="text-xs text-gray-400 truncate">{appt.doctorName ?? "-"}</p>
+                    <p className="text-xs text-gray-400 truncate">
+                      {appt.doctorName ?? "-"}
+                      {appt.appointmentDate ? ` · ${appt.appointmentDate}` : ""}
+                      {appt.appointmentTime ? ` ${appt.appointmentTime}` : ""}
+                    </p>
                   </div>
                   <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                     appt.status === "iptal"
