@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { doctors, aiActions } from "@/db/schema";
-import { eq, like } from "drizzle-orm";
+import { eq, ilike } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,23 +20,34 @@ export async function POST(req: NextRequest) {
 
     const { doctorName, specialization } = params;
 
+    const selectCols = {
+      fullName: doctors.fullName,
+      specialization: doctors.specialization,
+      workingHours: doctors.workingHours,
+      active: doctors.active,
+    };
+
+    console.log("[DOCTOR-INFO] Params:", { doctorName, specialization });
+
     let doctorList;
     if (doctorName) {
       doctorList = await db
-        .select()
+        .select(selectCols)
         .from(doctors)
-        .where(like(doctors.fullName, `%${doctorName}%`));
+        .where(ilike(doctors.fullName, `%${doctorName}%`));
     } else if (specialization) {
       doctorList = await db
-        .select()
+        .select(selectCols)
         .from(doctors)
-        .where(like(doctors.specialization, `%${specialization}%`));
+        .where(ilike(doctors.specialization, `%${specialization}%`));
     } else {
       doctorList = await db
-        .select()
+        .select(selectCols)
         .from(doctors)
         .where(eq(doctors.active, true));
     }
+
+    console.log("[DOCTOR-INFO] Found:", doctorList.length, "doctors");
 
     // Log ai_action
     await db.insert(aiActions).values({

@@ -43,10 +43,28 @@ function calculateDuration(startedAt?: string, endedAt?: string): number | null 
   return Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000);
 }
 
-function generateSummary(transcript?: string): string {
+function generateTurkishSummary(transcript?: string): string {
   if (!transcript) return "Transkript mevcut değil.";
-  const words = transcript.split(" ");
-  return words.slice(0, 50).join(" ") + (words.length > 50 ? "..." : "");
+
+  const text = transcript.toLowerCase();
+  const lines: string[] = [];
+
+  if (text.includes("randevu") && (text.includes("oluşturuldu") || text.includes("alındı") || text.includes("başarıyla"))) {
+    lines.push("Hasta randevu oluşturuldu.");
+  }
+  if (text.includes("iptal")) lines.push("Randevu iptali gerçekleştirildi.");
+  if (text.includes("ertele") || text.includes("taşı") || text.includes("yeniden planla")) lines.push("Randevu yeniden planlandı.");
+  if (text.includes("geri ara") || text.includes("geri arama")) lines.push("Geri arama talebi oluşturuldu.");
+  if (text.includes("bilgi") && (text.includes("doktor") || text.includes("sigorta") || text.includes("çalışma"))) {
+    lines.push("Hasta bilgi talebinde bulundu.");
+  }
+
+  if (lines.length === 0) {
+    const words = transcript.split(" ");
+    return words.slice(0, 40).join(" ") + (words.length > 40 ? "..." : "");
+  }
+
+  return lines.join(" ");
 }
 
 function detectIntent(transcript?: string, summary?: string): string {
@@ -81,7 +99,8 @@ export async function POST(req: NextRequest) {
 
     const duration = calculateDuration(callData.startedAt, callData.endedAt);
     const transcript = artifact.transcript ?? null;
-    const summary = analysis.summary ?? generateSummary(transcript ?? undefined);
+    // Always generate Turkish summary from transcript; ignore VAPI's English analysis.summary
+    const summary = generateTurkishSummary(transcript ?? undefined);
     const intent =
       analysis.structuredData?.intent ??
       detectIntent(transcript ?? undefined, summary);
