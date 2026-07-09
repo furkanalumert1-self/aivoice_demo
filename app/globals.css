@@ -3,35 +3,112 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* ── Clinica × Vox — Medical Teal + Voice Cockpit ────────── */
+    --background: 196 40% 98.5%;
+    --foreground: 218 28% 16%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 218 28% 16%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 238 75% 49%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 238 75% 49%;
-    --radius: 0.5rem;
+    --popover-foreground: 218 28% 16%;
+    --primary: 191 52% 36%;
+    --primary-foreground: 196 100% 98%;
+    --secondary: 196 25% 95%;
+    --secondary-foreground: 218 25% 20%;
+    --muted: 196 22% 96.5%;
+    --muted-foreground: 215 14% 48%;
+    --accent: 191 52% 36%;
+    --accent-foreground: 196 100% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 197 18% 91%;
+    --input: 197 18% 91%;
+    --ring: 191 52% 36%;
+    --radius: 0.75rem;
+
+    /* ── Gradient design tokens (Clinica style) ───────────────── */
+    --grad-brand:  linear-gradient(140deg, oklch(66% 0.11 192) 0%, oklch(56% 0.12 205) 100%);
+    --grad-tile-1: linear-gradient(140deg, oklch(96.5% 0.035 195) 0%, oklch(90% 0.082 195) 100%);
+    --grad-tile-2: linear-gradient(140deg, oklch(96.5% 0.035 250) 0%, oklch(90% 0.082 250) 100%);
+    --grad-tile-3: linear-gradient(140deg, oklch(97%   0.030 158) 0%, oklch(91% 0.072 158) 100%);
+    --grad-tile-4: linear-gradient(140deg, oklch(97%   0.030 22)  0%, oklch(91% 0.078 22)  100%);
+    --shadow-soft: 0 1px 2px oklch(45% 0.03 220 / 0.04), 0 4px 14px oklch(45% 0.03 220 / 0.05);
+    --shadow-pill: 0 1px 1px oklch(45% 0.03 220 / 0.04), 0 1px 3px  oklch(45% 0.03 220 / 0.08);
+    --shadow-pop:  0 1px 2px oklch(45% 0.03 220 / 0.06), 0 14px 36px oklch(45% 0.03 220 / 0.13);
   }
 }
 
 @layer base {
-  * {
-    border-color: hsl(var(--border));
-  }
+  * { border-color: hsl(var(--border)); }
+
   body {
-    background-color: hsl(var(--background));
+    background: hsl(var(--background));
     color: hsl(var(--foreground));
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "cv01";
+    letter-spacing: -0.008em;
   }
+
+  ::selection { background: hsl(var(--primary) / 0.18); }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+    border: 2px solid hsl(var(--background));
+  }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }
+}
+
+/* ── Typography helpers ───────────────────────────────────────── */
+.label-mono {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 10px;
+  font-weight: 600;
+}
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  letter-spacing: -0.02em;
+}
+
+/* ── Navigation ───────────────────────────────────────────────── */
+.nav-pill-active {
+  background: white;
+  border: 1px solid hsl(var(--border));
+  box-shadow: var(--shadow-pill);
+}
+
+/* ── Motion ───────────────────────────────────────────────────── */
+@keyframes floatUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-float-up { animation: floatUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-fade-in { animation: fadeIn 0.3s ease both; }
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+.animate-slide-in { animation: slideInRight 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+.pulse-dot { animation: pulseDot 1.8s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float-up,
+  .animate-fade-in,
+  .animate-slide-in,
+  .pulse-dot { animation: none !important; }
 }

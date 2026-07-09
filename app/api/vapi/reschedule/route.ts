@@ -32,17 +32,13 @@ export async function POST(req: NextRequest) {
 
     let rescheduled = null;
 
-    const updateData: Record<string, unknown> = {
+    const updateData = {
       appointmentAt: newAppointmentAt,
       appointmentDate: datePart,
       appointmentTime: newTime,
-      status: "onaylandi",
-      updatedAt: new Date(),
+      status: "onaylandi" as const,
+      ...(doctorName ? { doctorName } : {}),
     };
-
-    if (doctorName) {
-      updateData.doctorName = doctorName;
-    }
 
     if (appointmentId) {
       const [result] = await db
