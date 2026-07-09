@@ -17,13 +17,17 @@ export async function POST(req: NextRequest) {
       params = toolCall?.function?.parameters ?? body;
     }
 
-    const { patientName, phone, reason } = params;
+    const patientName = params.patientName ?? params.patient_name ?? params.name ?? null;
+    const phone = params.phone ?? params.patientPhone ?? params.patient_phone ?? params.phoneNumber;
+    const reason = params.reason ?? null;
 
     if (!phone) {
-      return NextResponse.json(
-        { error: "Telefon numarası gerekli" },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        results: [{
+          toolCallId,
+          result: "Geri arama talebi için telefon numarası gereklidir.",
+        }],
+      });
     }
 
     // Insert callback request
@@ -54,6 +58,8 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("Callback request error:", error);
-    return NextResponse.json({ error: "Geri arama talebi oluşturulamadı" }, { status: 500 });
+    return NextResponse.json({
+      results: [{ toolCallId: "unknown", result: "Geri arama talebi oluşturulurken hata oluştu. Lütfen tekrar deneyin." }],
+    });
   }
 }

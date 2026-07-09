@@ -3,13 +3,14 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { appointments, doctors } from "@/db/schema";
-import { and, gte, lte, eq, ne } from "drizzle-orm";
+import { and, gte, lte, ne, ilike } from "drizzle-orm";
 
 export async function POST(req: NextRequest) {
+  let toolCallId = "unknown";
   try {
     const body = await req.json();
     const toolCall = body?.message?.toolCallList?.[0];
-    const toolCallId = toolCall?.id ?? "unknown";
+    toolCallId = toolCall?.id ?? "unknown";
 
     let params: Record<string, string> = {};
     try {
@@ -18,21 +19,55 @@ export async function POST(req: NextRequest) {
       params = toolCall?.function?.parameters ?? body;
     }
 
-    const { doctorName, preferredDate, preferredTime, date } = params;
-    const targetDate = preferredDate ?? date;
+    console.log("[AVAILABILITY] Incoming params:", JSON.stringify(params));
+
+    // Accept multiple date param names
+    const doctorName = params.doctorName ?? params.doctor_name ?? params.doctor ?? null;
+    const specialization = params.specialization ?? params.uzmanlik ?? null;
+    const targetDate =
+      params.date ?? params.preferredDate ?? params.appointmentDate ??
+      params.appointment_date ?? params.preferred_date ?? null;
+    const preferredTime =
+      params.time ?? params.preferredTime ?? params.appointmentTime ??
+      params.appointment_time ?? params.preferred_time ?? null;
 
     if (!targetDate) {
-      return NextResponse.json({ error: "Tarih gerekli" }, { status: 400 });
+      return NextResponse.json({
+        results: [{
+          toolCallId,
+          result: "Müsaitlik kontrolü için tarih bilgisi gereklidir. Lütfen randevu tarihini belirtin.",
+        }],
+      });
     }
 
-    // Look up doctor in DB if name provided
-    let doctorRecord = null;
-    if (doctorName) {
-      const doctorResults = await db
-        .select()
+    // Validate and parse date
+    const parsedDate = new Date(targetDate);
+    if (isNaN(parsedDate.getTime())) {
+      console.error("[AVAILABILITY] Invalid date:", targetDate);
+      return NextResponse.json({
+        results: [{
+          toolCallId,
+          result: `Geçersiz tarih formatı: "${targetDate}". Lütfen YYYY-AA-GG formatında belirtin (örn: 2026-07-11).`,
+        }],
+      });
+    }
+
+    // Find doctor by name or specialization
+    let resolvedDoctorName: string | null = doctorName;
+    if (!resolvedDoctorName && specialization) {
+      const found = await db
+        .select({ fullName: doctors.fullName })
         .from(doctors)
-        .where(and(eq(doctors.fullName, doctorName), eq(doctors.active, true)));
-      doctorRecord = doctorResults[0] ?? null;
+        .where(ilike(doctors.specialization, `%${specialization}%`))
+        .limit(1);
+      resolvedDoctorName = found[0]?.fullName ?? null;
+    } else if (resolvedDoctorName) {
+      const found = await db
+        .select({ fullName: doctors.fullName })
+        .from(doctors)
+        .where(ilike(doctors.fullName, `%${resolvedDoctorName}%`))
+        .limit(1);
+      resolvedDoctorName = found[0]?.fullName ?? resolvedDoctorName;
     }
 
     const startOfDay = new Date(targetDate);
@@ -40,8 +75,7 @@ export async function POST(req: NextRequest) {
     const endOfDay = new Date(targetDate);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // Fetch booked slots for the day
-    const bookedQuery = db
+    const booked = await db
       .select({ appointmentTime: appointments.appointmentTime, doctorName: appointments.doctorName })
       .from(appointments)
       .where(
@@ -52,49 +86,45 @@ export async function POST(req: NextRequest) {
         )
       );
 
-    const booked = await bookedQuery;
-
     const bookedTimes = booked
-      .filter((a) => !doctorName || a.doctorName === doctorName)
+      .filter((a) => !resolvedDoctorName || a.doctorName === resolvedDoctorName)
       .map((a) => a.appointmentTime)
       .filter(Boolean) as string[];
 
-    // Generate available slots (09:00 - 17:30 in 30 min increments)
+    // Generate available slots (09:00 - 17:30, 30 min increments)
     const allSlots: string[] = [];
     for (let h = 9; h < 18; h++) {
       for (let m = 0; m < 60; m += 30) {
-        const time = `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
-        if (!bookedTimes.includes(time)) {
-          allSlots.push(time);
-        }
+        const slot = `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+        if (!bookedTimes.includes(slot)) allSlots.push(slot);
       }
     }
 
     const availableSlots = allSlots.slice(0, 6);
-    const doctorDisplayName = doctorRecord?.fullName ?? doctorName ?? "Herhangi bir doktor";
+    const displayName = resolvedDoctorName ?? "Uygun doktor";
 
     let resultMessage: string;
     if (availableSlots.length === 0) {
-      resultMessage = `${doctorDisplayName} için ${targetDate} tarihinde müsait slot bulunmuyor.`;
+      resultMessage = `${displayName} için ${targetDate} tarihinde müsait saat bulunmuyor.`;
+    } else if (preferredTime && availableSlots.includes(preferredTime)) {
+      resultMessage = `${displayName} ${targetDate} tarihinde saat ${preferredTime} için müsait. Randevu oluşturabilirsiniz. Doktor adı: ${displayName}.`;
     } else {
       const slotList = availableSlots.join(", ");
-      if (preferredTime && availableSlots.includes(preferredTime)) {
-        resultMessage = `${doctorDisplayName} ${targetDate} tarihinde ${preferredTime} saatinde müsait.`;
-      } else {
-        resultMessage = `${doctorDisplayName} ${targetDate} tarihinde müsait saatler: ${slotList}.`;
-      }
+      resultMessage = `${displayName} ${targetDate} tarihinde müsait saatler: ${slotList}. Randevu oluşturmak için doktor adını "${displayName}" olarak kullanın.`;
     }
 
+    console.log("[AVAILABILITY] Result:", resultMessage);
+
     return NextResponse.json({
-      results: [
-        {
-          toolCallId,
-          result: resultMessage,
-        },
-      ],
+      results: [{ toolCallId, result: resultMessage }],
     });
   } catch (error) {
-    console.error("Availability check error:", error);
-    return NextResponse.json({ error: "Müsaitlik kontrolü başarısız" }, { status: 500 });
+    console.error("[AVAILABILITY] Error:", error);
+    return NextResponse.json({
+      results: [{
+        toolCallId,
+        result: "Müsaitlik kontrolü sırasında bir hata oluştu. Lütfen tekrar deneyin.",
+      }],
+    });
   }
 }

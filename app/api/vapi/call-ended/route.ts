@@ -47,24 +47,54 @@ function generateTurkishSummary(transcript?: string): string {
   if (!transcript) return "Transkript mevcut değil.";
 
   const text = transcript.toLowerCase();
-  const lines: string[] = [];
+  const parts: string[] = [];
 
-  if (text.includes("randevu") && (text.includes("oluşturuldu") || text.includes("alındı") || text.includes("başarıyla"))) {
-    lines.push("Hasta randevu oluşturuldu.");
-  }
-  if (text.includes("iptal")) lines.push("Randevu iptali gerçekleştirildi.");
-  if (text.includes("ertele") || text.includes("taşı") || text.includes("yeniden planla")) lines.push("Randevu yeniden planlandı.");
-  if (text.includes("geri ara") || text.includes("geri arama")) lines.push("Geri arama talebi oluşturuldu.");
-  if (text.includes("bilgi") && (text.includes("doktor") || text.includes("sigorta") || text.includes("çalışma"))) {
-    lines.push("Hasta bilgi talebinde bulundu.");
-  }
-
-  if (lines.length === 0) {
-    const words = transcript.split(" ");
-    return words.slice(0, 40).join(" ") + (words.length > 40 ? "..." : "");
+  // Randevu alma
+  if (text.includes("randevu") && (text.includes("almak") || text.includes("alabilir") || text.includes("almak istiyorum"))) {
+    if (text.includes("oluşturuldu") || text.includes("başarıyla") || text.includes("alındı")) {
+      parts.push("Hasta randevu talebi iletildi ve randevu oluşturuldu.");
+    } else {
+      parts.push("Hasta randevu almak istedi.");
+    }
   }
 
-  return lines.join(" ");
+  // Randevu iptal
+  if (text.includes("iptal") && text.includes("randevu")) {
+    if (text.includes("iptal edildi") || text.includes("iptal ettim")) {
+      parts.push("Randevu iptal edildi.");
+    } else {
+      parts.push("Hasta randevu iptali talep etti.");
+    }
+  }
+
+  // Yeniden planlama
+  if (text.includes("ertele") || text.includes("taşı") || text.includes("yeniden planla") || text.includes("reschedule")) {
+    parts.push("Randevu yeniden planlandı.");
+  }
+
+  // Geri arama
+  if (text.includes("geri ara") || text.includes("geri arama")) {
+    parts.push("Geri arama talebi oluşturuldu.");
+  }
+
+  // Bilgi talebi (doktor/sigorta/çalışma saati)
+  if (!parts.length && (text.includes("bilgi") || text.includes("saat") || text.includes("sigorta") || text.includes("çalışma"))) {
+    parts.push("Hasta klinik bilgisi talep etti.");
+  }
+
+  if (parts.length === 0) {
+    // Generic: extract meaningful sentence from User turns
+    const userLines = transcript.split("\n")
+      .filter((l) => l.startsWith("User:"))
+      .map((l) => l.replace(/^User:\s*/, "").trim())
+      .filter(Boolean);
+    if (userLines.length > 0) {
+      return `Hasta: "${userLines[0]}"${userLines.length > 1 ? ` ve ${userLines.length - 1} mesaj daha.` : ""}`;
+    }
+    return transcript.slice(0, 120) + (transcript.length > 120 ? "..." : "");
+  }
+
+  return parts.join(" ");
 }
 
 function detectIntent(transcript?: string, summary?: string): string {

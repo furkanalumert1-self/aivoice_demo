@@ -18,13 +18,19 @@ export async function POST(req: NextRequest) {
       params = toolCall?.function?.parameters ?? body;
     }
 
-    const { appointmentId, phone, newDate, newTime, doctorName } = params;
+    const appointmentId = params.appointmentId ?? params.appointment_id ?? params.id ?? null;
+    const phone = params.phone ?? params.patientPhone ?? params.patient_phone ?? params.phoneNumber ?? null;
+    const newDate = params.newDate ?? params.new_date ?? params.date ?? params.appointmentDate ?? null;
+    const newTime = params.newTime ?? params.new_time ?? params.time ?? params.appointmentTime ?? null;
+    const doctorName = params.doctorName ?? params.doctor_name ?? params.doctor ?? null;
 
     if (!newDate || !newTime) {
-      return NextResponse.json(
-        { error: "Yeni tarih ve saat gerekli" },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        results: [{
+          toolCallId,
+          result: "Yeniden planlama için yeni tarih ve saat bilgisi gereklidir.",
+        }],
+      });
     }
 
     const [datePart] = newDate.split("T");
@@ -84,6 +90,8 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("Reschedule error:", error);
-    return NextResponse.json({ error: "Yeniden planlama başarısız" }, { status: 500 });
+    return NextResponse.json({
+      results: [{ toolCallId: "unknown", result: "Yeniden planlama sırasında bir hata oluştu. Lütfen tekrar deneyin." }],
+    });
   }
 }

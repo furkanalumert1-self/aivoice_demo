@@ -18,13 +18,17 @@ export async function POST(req: NextRequest) {
       params = toolCall?.function?.parameters ?? body;
     }
 
-    const { appointmentId, phone, reason } = params;
+    const phone = params.phone ?? params.patientPhone ?? params.patient_phone ?? params.phoneNumber;
+    const appointmentId = params.appointmentId ?? params.appointment_id ?? params.id;
+    const reason = params.reason ?? null;
 
     if (!appointmentId && !phone) {
-      return NextResponse.json(
-        { error: "Randevu ID veya telefon numarası gerekli" },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        results: [{
+          toolCallId,
+          result: "İptal işlemi için randevu ID veya telefon numarası gereklidir.",
+        }],
+      });
     }
 
     let cancelled = null;
@@ -73,6 +77,8 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("Cancel error:", error);
-    return NextResponse.json({ error: "İptal işlemi başarısız" }, { status: 500 });
+    return NextResponse.json({
+      results: [{ toolCallId: "unknown", result: "İptal işlemi sırasında bir hata oluştu. Lütfen tekrar deneyin." }],
+    });
   }
 }
