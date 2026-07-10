@@ -100,17 +100,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const availableSlots = allSlots.slice(0, 6);
     const displayName = resolvedDoctorName ?? "Uygun doktor";
 
     let resultMessage: string;
-    if (availableSlots.length === 0) {
+    if (allSlots.length === 0) {
       resultMessage = `${displayName} için ${targetDate} tarihinde müsait saat bulunmuyor.`;
-    } else if (preferredTime && availableSlots.includes(preferredTime)) {
-      resultMessage = `${displayName} ${targetDate} tarihinde saat ${preferredTime} için müsait. Randevu oluşturabilirsiniz. Doktor adı: ${displayName}.`;
+    } else if (preferredTime && allSlots.includes(preferredTime)) {
+      // Preferred time is available — confirm directly so AI can proceed to booking
+      resultMessage = `${displayName} ${targetDate} tarihinde saat ${preferredTime} müsait. Randevuyu oluşturabilirsiniz. Doktor adı: ${displayName}.`;
+    } else if (preferredTime) {
+      // Preferred time is booked — offer nearest alternatives
+      const alternatives = allSlots.slice(0, 4).join(", ");
+      resultMessage = `${displayName} için ${targetDate} tarihinde saat ${preferredTime} dolu. En yakın müsait saatler: ${alternatives}. Doktor adı: ${displayName}.`;
     } else {
-      const slotList = availableSlots.join(", ");
-      resultMessage = `${displayName} ${targetDate} tarihinde müsait saatler: ${slotList}. Randevu oluşturmak için doktor adını "${displayName}" olarak kullanın.`;
+      // No preference — show morning and afternoon options
+      const slotList = allSlots.slice(0, 8).join(", ");
+      resultMessage = `${displayName} ${targetDate} tarihinde müsait saatler: ${slotList}. Doktor adı: ${displayName}.`;
     }
 
     console.log("[AVAILABILITY] Result:", resultMessage);
