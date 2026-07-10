@@ -60,12 +60,13 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Log ai_action
-    await db.insert(aiActions).values({
-      actionType: "cancel",
-      payload: { appointmentId: cancelled.id, phone, reason: reason ?? null },
-      result: "Randevu başarıyla iptal edildi.",
-    });
+    try {
+      await db.insert(aiActions).values({
+        actionType: "cancel",
+        payload: { appointmentId: cancelled.id, phone, reason: reason ?? null },
+        result: "Randevu başarıyla iptal edildi.",
+      });
+    } catch { /* ignore */ }
 
     return NextResponse.json({
       results: [

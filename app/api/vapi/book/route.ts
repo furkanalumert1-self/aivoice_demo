@@ -73,12 +73,14 @@ export async function POST(req: NextRequest) {
       })
       .returning();
 
-    // Log ai_action
-    await db.insert(aiActions).values({
-      actionType: "create_appointment",
-      payload: { patientName, phone, doctorName, date: datePart, time },
-      result: `Randevu başarıyla oluşturuldu. ID: ${newAppointment.id}`,
-    });
+    // Non-critical logging
+    try {
+      await db.insert(aiActions).values({
+        actionType: "create_appointment",
+        payload: { patientName, phone, doctorName, date: datePart, time },
+        result: `Randevu başarıyla oluşturuldu. ID: ${newAppointment.id}`,
+      });
+    } catch { /* ignore */ }
 
     // Trigger n8n webhook if configured
     const n8nBase = process.env.N8N_WEBHOOK_BASE_URL;

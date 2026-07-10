@@ -73,12 +73,13 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Log ai_action
-    await db.insert(aiActions).values({
-      actionType: "reschedule",
-      payload: { appointmentId: rescheduled.id, phone, newDate: datePart, newTime },
-      result: `Randevu ${datePart} ${newTime}'e taşındı.`,
-    });
+    try {
+      await db.insert(aiActions).values({
+        actionType: "reschedule",
+        payload: { appointmentId: rescheduled.id, phone, newDate: datePart, newTime },
+        result: `Randevu ${datePart} ${newTime}'e taşındı.`,
+      });
+    } catch { /* ignore */ }
 
     return NextResponse.json({
       results: [

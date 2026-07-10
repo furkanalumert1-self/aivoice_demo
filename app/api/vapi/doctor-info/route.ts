@@ -3,13 +3,19 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { doctors, aiActions } from "@/db/schema";
-import { eq, ilike } from "drizzle-orm";
+import { ilike } from "drizzle-orm";
+
+const DAYS: Record<string, string> = {
+  mon: "Pazartesi", tue: "Salı", wed: "Çarşamba",
+  thu: "Perşembe", fri: "Cuma", sat: "Cumartesi", sun: "Pazar",
+};
 
 export async function POST(req: NextRequest) {
+  let toolCallId = "unknown";
   try {
     const body = await req.json();
     const toolCall = body?.message?.toolCallList?.[0];
-    const toolCallId = toolCall?.id ?? "unknown";
+    toolCallId = toolCall?.id ?? "unknown";
 
     let params: Record<string, string> = {};
     try {
@@ -18,52 +24,63 @@ export async function POST(req: NextRequest) {
       params = toolCall?.function?.parameters ?? body;
     }
 
-    const { doctorName, specialization } = params;
+    const doctorName = params.doctorName ?? params.doctor_name ?? params.doctor ?? null;
+    const specialization =
+      params.specialization ?? params.uzmanlik ?? params.uzmanlikAlani ??
+      params.speciality ?? params.branch ?? null;
+
+    console.log("[DOCTOR-INFO] Params:", { doctorName, specialization });
 
     const selectCols = {
       fullName: doctors.fullName,
       specialization: doctors.specialization,
       workingHours: doctors.workingHours,
-      active: doctors.active,
     };
 
-    console.log("[DOCTOR-INFO] Params:", { doctorName, specialization });
+    let doctorList: { fullName: string; specialization: string; workingHours: unknown }[] = [];
 
-    let doctorList;
-    if (doctorName) {
-      doctorList = await db
-        .select(selectCols)
-        .from(doctors)
-        .where(ilike(doctors.fullName, `%${doctorName}%`));
-    } else if (specialization) {
-      doctorList = await db
-        .select(selectCols)
-        .from(doctors)
-        .where(ilike(doctors.specialization, `%${specialization}%`));
-    } else {
-      doctorList = await db
-        .select(selectCols)
-        .from(doctors)
-        .where(eq(doctors.active, true));
+    try {
+      if (doctorName) {
+        doctorList = await db
+          .select(selectCols)
+          .from(doctors)
+          .where(ilike(doctors.fullName, `%${doctorName}%`));
+      } else if (specialization) {
+        doctorList = await db
+          .select(selectCols)
+          .from(doctors)
+          .where(ilike(doctors.specialization, `%${specialization}%`));
+      } else {
+        doctorList = await db.select(selectCols).from(doctors);
+      }
+    } catch (dbErr) {
+      console.error("[DOCTOR-INFO] DB query error:", dbErr);
+      return NextResponse.json({
+        results: [{
+          toolCallId,
+          result: "Doktor bilgilerine şu an ulaşılamıyor. Lütfen tekrar deneyin.",
+        }],
+      });
     }
 
     console.log("[DOCTOR-INFO] Found:", doctorList.length, "doctors");
 
-    // Log ai_action
-    await db.insert(aiActions).values({
-      actionType: "doctor_info",
-      payload: { doctorName: doctorName ?? null, specialization: specialization ?? null },
-      result: `${doctorList.length} doktor bilgisi döndürüldü.`,
-    });
+    // Non-critical logging — never let this break the response
+    try {
+      await db.insert(aiActions).values({
+        actionType: "doctor_info",
+        payload: { doctorName, specialization },
+        result: `${doctorList.length} doktor bilgisi döndürüldü.`,
+      });
+    } catch { /* ignore */ }
 
     if (doctorList.length === 0) {
+      const criteria = doctorName ? `"${doctorName}"` : specialization ? `"${specialization}" uzmanlığında` : "";
       return NextResponse.json({
-        results: [
-          {
-            toolCallId,
-            result: "Aradığınız kriterlere uyan doktor bulunamadı.",
-          },
-        ],
+        results: [{
+          toolCallId,
+          result: `${criteria} doktor bulunamadı. Kliniğimizdeki doktorları listeleyeyim mi?`,
+        }],
       });
     }
 
@@ -71,36 +88,28 @@ export async function POST(req: NextRequest) {
       const wh = doc.workingHours as Record<string, string | null> | null;
       let schedule = "";
       if (wh) {
-        const days: Record<string, string> = {
-          mon: "Pzt",
-          tue: "Sal",
-          wed: "Çar",
-          thu: "Per",
-          fri: "Cum",
-          sat: "Cmt",
-          sun: "Paz",
-        };
         const activeDays = Object.entries(wh)
           .filter(([, v]) => v)
-          .map(([k, v]) => `${days[k] ?? k}: ${v}`)
+          .map(([k, v]) => `${DAYS[k] ?? k}: ${v}`)
           .join(", ");
-        schedule = ` Çalışma saatleri: ${activeDays}.`;
+        if (activeDays) schedule = ` Çalışma günleri: ${activeDays}.`;
       }
       return `${doc.fullName} (${doc.specialization}).${schedule}`;
     });
 
-    const resultMessage = infoLines.join(" | ");
-
     return NextResponse.json({
-      results: [
-        {
-          toolCallId,
-          result: resultMessage,
-        },
-      ],
+      results: [{
+        toolCallId,
+        result: infoLines.join(" | "),
+      }],
     });
   } catch (error) {
-    console.error("Doctor info error:", error);
-    return NextResponse.json({ error: "Doktor bilgisi alınamadı" }, { status: 500 });
+    console.error("[DOCTOR-INFO] Unexpected error:", error);
+    return NextResponse.json({
+      results: [{
+        toolCallId,
+        result: "Doktor bilgisi alınırken bir hata oluştu. Lütfen tekrar deneyin.",
+      }],
+    });
   }
 }
