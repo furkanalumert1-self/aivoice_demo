@@ -15,16 +15,20 @@ export async function POST(req: NextRequest) {
   let toolCallId = "unknown";
   try {
     const body = await req.json();
+
+    // Full body log to diagnose VAPI payload format
+    console.log("[DOCTOR-INFO] Full body:", JSON.stringify(body).slice(0, 500));
+
     const extracted = extractToolCall(body);
     toolCallId = extracted.toolCallId;
     const params = extracted.params;
+
+    console.log("[DOCTOR-INFO] Extracted params:", JSON.stringify(params));
 
     const doctorName = params.doctorName ?? params.doctor_name ?? params.doctor ?? null;
     const specialization =
       params.specialization ?? params.uzmanlik ?? params.uzmanlikAlani ??
       params.speciality ?? params.branch ?? params.department ?? null;
-
-    console.log("[DOCTOR-INFO] Raw params:", JSON.stringify(params));
 
     console.log("[DOCTOR-INFO] Params:", { doctorName, specialization });
 
