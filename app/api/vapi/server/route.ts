@@ -2,8 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { doctors, clinicSettings } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { doctors, clinicSettings, services } from "@/db/schema";
 
 const DAY_NAMES: Record<string, string> = {
   mon: "Pazartesi", tue: "Salı", wed: "Çarşamba",
@@ -11,7 +10,7 @@ const DAY_NAMES: Record<string, string> = {
 };
 
 async function buildClinicContext(): Promise<string> {
-  const [doctorList, settings] = await Promise.allSettled([
+  const [doctorList, settings, serviceList] = await Promise.allSettled([
     db
       .select({
         fullName: doctors.fullName,
@@ -21,6 +20,9 @@ async function buildClinicContext(): Promise<string> {
       })
       .from(doctors),
     db.select().from(clinicSettings).limit(1),
+    db
+      .select({ name: services.name, durationMinutes: services.durationMinutes, price: services.price, active: services.active })
+      .from(services),
   ]);
 
   const clinicName =
@@ -57,11 +59,25 @@ async function buildClinicContext(): Promise<string> {
       .join("\n");
   }
 
+  let serviceLines = "";
+  if (serviceList.status === "fulfilled" && serviceList.value.length > 0) {
+    const activeServices = serviceList.value.filter((s) => s.active !== false);
+    serviceLines = activeServices
+      .map((s) => {
+        const parts = [s.name];
+        if (s.durationMinutes) parts.push(`${s.durationMinutes} dk`);
+        if (s.price) parts.push(`₺${s.price}`);
+        return `- ${parts.join(", ")}`;
+      })
+      .join("\n");
+  }
+
   return [
     `Klinik: ${clinicName}`,
     `Çalışma saatleri: Pazartesi–Cuma ${openingHour}–${closingHour}, Cumartesi ${openingHour}–14:00, Pazar kapalı`,
     doctorLines ? `Aktif doktorlar:\n${doctorLines}` : "Doktor bilgisi şu an yüklenemedi.",
-  ].join("\n");
+    serviceLines ? `Sunulan hizmetler:\n${serviceLines}` : "",
+  ].filter(Boolean).join("\n");
 }
 
 export async function POST(req: NextRequest) {

@@ -3,6 +3,16 @@ import {
   timestamp, jsonb
 } from "drizzle-orm/pg-core";
 
+export const services = pgTable("services", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  durationMinutes: integer("duration_minutes").default(30),
+  price: numeric("price"),
+  active: boolean("active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const doctors = pgTable("doctors", {
   id: uuid("id").defaultRandom().primaryKey(),
   fullName: text("full_name").notNull(),
@@ -94,3 +104,5 @@ export type AiAction = typeof aiActions.$inferSelect;
 export type NewAiAction = typeof aiActions.$inferInsert;
 export type ClinicSettings = typeof clinicSettings.$inferSelect;
 export type CallbackRequest = typeof callbackRequests.$inferSelect;
+export type Service = typeof services.$inferSelect;
+export type NewService = typeof services.$inferInsert;
