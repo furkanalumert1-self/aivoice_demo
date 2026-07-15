@@ -22,7 +22,9 @@ export async function POST(req: NextRequest) {
     const doctorName = params.doctorName ?? params.doctor_name ?? params.doctor ?? null;
     const specialization =
       params.specialization ?? params.uzmanlik ?? params.uzmanlikAlani ??
-      params.speciality ?? params.branch ?? null;
+      params.speciality ?? params.branch ?? params.department ?? null;
+
+    console.log("[DOCTOR-INFO] Raw params:", JSON.stringify(params));
 
     console.log("[DOCTOR-INFO] Params:", { doctorName, specialization });
 
