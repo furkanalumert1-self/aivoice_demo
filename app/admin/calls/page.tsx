@@ -5,6 +5,7 @@ import { callLogs } from "@/db/schema";
 import { desc } from "drizzle-orm";
 import { Phone, AlertTriangle, RefreshCw } from "lucide-react";
 import { CallsList, type CallRow } from "@/components/calls-list";
+import { SyncCallsButton } from "@/components/sync-calls-button";
 
 type ErrorKind = "migration" | "connection" | "unknown";
 
@@ -44,9 +45,12 @@ export default async function CallsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Çağrı Kayıtları</h1>
-        <p className="mt-0.5 text-sm text-gray-500">AI asistan tarafından işlenen tüm çağrılar · satıra tıkla → transkript</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">Çağrı Kayıtları</h1>
+          <p className="mt-0.5 text-sm text-gray-500">AI asistan tarafından işlenen tüm çağrılar · satıra tıkla → transkript</p>
+        </div>
+        <SyncCallsButton />
       </div>
 
       {/* Errors */}
