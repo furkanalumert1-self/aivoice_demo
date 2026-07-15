@@ -2,7 +2,9 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { doctors, clinicSettings, services } from "@/db/schema";
+import { doctors, clinicSettings, services, calls, callLogs } from "@/db/schema";
+
+// ── Context injection ────────────────────────────────────────────────────────
 
 const DAY_NAMES: Record<string, string> = {
   mon: "Pazartesi", tue: "Salı", wed: "Çarşamba",
@@ -80,23 +82,135 @@ async function buildClinicContext(): Promise<string> {
   ].filter(Boolean).join("\n");
 }
 
+// ── Call logging (end-of-call-report) ────────────────────────────────────────
+
+function calculateDuration(startedAt?: string, endedAt?: string): number | null {
+  if (!startedAt || !endedAt) return null;
+  return Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000);
+}
+
+function generateTurkishSummary(transcript?: string): string {
+  if (!transcript) return "Transkript mevcut değil.";
+  const text = transcript.toLowerCase();
+  const parts: string[] = [];
+  if (text.includes("randevu") && (text.includes("almak") || text.includes("alabilir") || text.includes("almak istiyorum"))) {
+    if (text.includes("oluşturuldu") || text.includes("başarıyla") || text.includes("alındı")) {
+      parts.push("Hasta randevu talebi iletildi ve randevu oluşturuldu.");
+    } else {
+      parts.push("Hasta randevu almak istedi.");
+    }
+  }
+  if (text.includes("iptal") && text.includes("randevu")) {
+    parts.push(text.includes("iptal edildi") ? "Randevu iptal edildi." : "Hasta randevu iptali talep etti.");
+  }
+  if (text.includes("ertele") || text.includes("taşı") || text.includes("yeniden planla")) {
+    parts.push("Randevu yeniden planlandı.");
+  }
+  if (text.includes("geri ara") || text.includes("geri arama")) {
+    parts.push("Geri arama talebi oluşturuldu.");
+  }
+  if (!parts.length && (text.includes("bilgi") || text.includes("saat") || text.includes("sigorta") || text.includes("doktor"))) {
+    parts.push("Hasta klinik bilgisi talep etti.");
+  }
+  if (parts.length === 0) {
+    const userLines = transcript.split("\n")
+      .filter((l) => l.startsWith("User:"))
+      .map((l) => l.replace(/^User:\s*/, "").trim())
+      .filter(Boolean);
+    if (userLines.length > 0) {
+      return `Hasta: "${userLines[0]}"${userLines.length > 1 ? ` ve ${userLines.length - 1} mesaj daha.` : ""}`;
+    }
+    return transcript.slice(0, 120) + (transcript.length > 120 ? "..." : "");
+  }
+  return parts.join(" ");
+}
+
+function detectIntent(transcript?: string): string {
+  const text = (transcript ?? "").toLowerCase();
+  if (!text.trim()) return "diger";
+  if (text.includes("randevu") && (text.includes("aldım") || text.includes("oluştur") || text.includes("almak") || text.includes("alındı"))) return "randevu_alma";
+  if (text.includes("iptal") || text.includes("iptal ettim")) return "randevu_iptal";
+  if (text.includes("ertele") || text.includes("taşı") || text.includes("değiştir")) return "randevu_erteleme";
+  if (text.includes("geri ara") || text.includes("geri arama")) return "geri_arama";
+  if (text.includes("bilgi") || text.includes("saat") || text.includes("doktor")) return "bilgi";
+  return "diger";
+}
+
+async function handleEndOfCall(body: Record<string, unknown>) {
+  const msg = (body.message ?? body) as Record<string, unknown>;
+  const callData = (msg.call ?? {}) as Record<string, unknown>;
+  const artifact = (msg.artifact ?? {}) as Record<string, unknown>;
+  const customer = (callData.customer ?? {}) as Record<string, unknown>;
+  const phoneNumber = (callData.phoneNumber ?? {}) as Record<string, unknown>;
+
+  const callerNumber = (customer.number ?? phoneNumber.number ?? "Bilinmiyor") as string;
+  const duration = calculateDuration(callData.startedAt as string, callData.endedAt as string);
+  const transcript = (artifact.transcript ?? null) as string | null;
+  const summary = generateTurkishSummary(transcript ?? undefined);
+  const intent = detectIntent(transcript ?? undefined);
+  const recordingUrl = (artifact.recordingUrl ?? null) as string | null;
+  const costRaw = callData.cost as number | undefined;
+  const cost = costRaw != null ? String(costRaw.toFixed(6)) : null;
+  const vapiCallId = (callData.id ?? null) as string | null;
+
+  console.log("[VAPI-SERVER] end-of-call-report | callId:", vapiCallId, "| caller:", callerNumber, "| duration:", duration);
+
+  if (vapiCallId) {
+    await db
+      .insert(callLogs)
+      .values({ callerNumber, vapiCallId, transcript, summary, duration, intent, callStatus: "completed", cost, recordingUrl })
+      .onConflictDoUpdate({
+        target: callLogs.vapiCallId,
+        set: { summary, intent, duration, callStatus: "completed", recordingUrl },
+      });
+  } else {
+    await db
+      .insert(callLogs)
+      .values({ callerNumber, vapiCallId: null, transcript, summary, duration, intent, callStatus: "completed", cost, recordingUrl });
+  }
+
+  try {
+    await db.insert(calls).values({
+      callerPhone: callerNumber,
+      durationSeconds: duration,
+      transcript,
+      summary,
+      cost,
+      outcome: intent,
+      recordingUrl,
+    });
+  } catch { /* legacy table — best effort */ }
+}
+
+// ── Main handler ──────────────────────────────────────────────────────────────
+
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const messageType: string = body?.message?.type ?? body?.type ?? "";
+    const body = await req.json() as Record<string, unknown>;
+    const msg = (body.message ?? body) as Record<string, unknown>;
+    const messageType: string = (msg.type ?? "") as string;
 
-    console.log("[VAPI-SERVER] Event type:", messageType, "| Body keys:", Object.keys(body));
+    console.log("[VAPI-SERVER] Event type:", messageType);
 
-    // Skip events that don't need context injection
-    const skipTypes = ["end-of-call-report", "function-call", "transcript", "speech-update", "hang", "tool-calls"];
+    // Call-ended: log to DB
+    if (messageType === "end-of-call-report") {
+      try {
+        await handleEndOfCall(body);
+      } catch (err) {
+        console.error("[VAPI-SERVER] Call log error:", err);
+      }
+      return NextResponse.json({ received: true });
+    }
+
+    // Non-context events: acknowledge
+    const skipTypes = ["function-call", "transcript", "speech-update", "hang", "tool-calls"];
     if (skipTypes.includes(messageType)) {
       return NextResponse.json({ received: true });
     }
 
-    // For call-started, assistant-request, or any unknown event — inject context
+    // call-started / assistant-request / unknown — inject clinic context
     let context = "";
     try {
-      // 4-second timeout to avoid VAPI timing out waiting for our response
       const timeoutPromise = new Promise<string>((resolve) =>
         setTimeout(() => resolve("Klinik: Ali Mert Klinik\nDoktor bilgisi yüklenemedi (zaman aşımı)."), 4000)
       );
@@ -106,12 +220,10 @@ export async function POST(req: NextRequest) {
       context = "Klinik: Ali Mert Klinik\nDoktor bilgisi şu an yüklenemedi.";
     }
 
-    console.log("[VAPI-SERVER] Injecting context (first 200 chars):", context.slice(0, 200));
+    console.log("[VAPI-SERVER] Injecting context:", context.slice(0, 200));
 
     const contextBlock = `--- GÜNCEL KLİNİK BİLGİLERİ (otomatik yüklendi) ---\n${context}\n--- BU BİLGİLERİ KULLANARAK CEVAP VER, DOKTOR ADINI UYDURMA ---`;
 
-    // variableValues: replaces {{clinic_context}} in the VAPI system prompt
-    // model.messages: injects as an extra system message (belt-and-suspenders)
     return NextResponse.json({
       assistantOverrides: {
         variableValues: {
