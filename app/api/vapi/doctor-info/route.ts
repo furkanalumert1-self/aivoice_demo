@@ -11,18 +11,48 @@ const DAYS: Record<string, string> = {
   thu: "Perşembe", fri: "Cuma", sat: "Cumartesi", sun: "Pazar",
 };
 
+const SELECT_COLS = {
+  fullName: doctors.fullName,
+  specialization: doctors.specialization,
+  workingHours: doctors.workingHours,
+};
+
+type DoctorRow = { fullName: string; specialization: string; workingHours: unknown };
+
+async function queryDoctors(doctorName: string | null, specialization: string | null): Promise<DoctorRow[]> {
+  if (doctorName) {
+    return db.select(SELECT_COLS).from(doctors).where(ilike(doctors.fullName, `%${doctorName}%`));
+  }
+  if (specialization) {
+    return db.select(SELECT_COLS).from(doctors).where(ilike(doctors.specialization, `%${specialization}%`));
+  }
+  return db.select(SELECT_COLS).from(doctors);
+}
+
+async function queryWithRetry(doctorName: string | null, specialization: string | null): Promise<DoctorRow[]> {
+  // First attempt
+  try {
+    return await Promise.race([
+      queryDoctors(doctorName, specialization),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 6000)),
+    ]);
+  } catch (err) {
+    console.warn("[DOCTOR-INFO] First attempt failed, retrying:", err);
+  }
+  // Retry after brief pause to let Neon cold start finish
+  await new Promise((r) => setTimeout(r, 1000));
+  return queryDoctors(doctorName, specialization);
+}
+
 export async function POST(req: NextRequest) {
   let toolCallId = "unknown";
   try {
     const body = await req.json();
-
-    // Full body log to diagnose VAPI payload format
     console.log("[DOCTOR-INFO] Full body:", JSON.stringify(body).slice(0, 500));
 
     const extracted = extractToolCall(body);
     toolCallId = extracted.toolCallId;
     const params = extracted.params;
-
     console.log("[DOCTOR-INFO] Extracted params:", JSON.stringify(params));
 
     const doctorName = params.doctorName ?? params.doctor_name ?? params.doctor ?? null;
@@ -30,32 +60,13 @@ export async function POST(req: NextRequest) {
       params.specialization ?? params.uzmanlik ?? params.uzmanlikAlani ??
       params.speciality ?? params.branch ?? params.department ?? null;
 
-    console.log("[DOCTOR-INFO] Params:", { doctorName, specialization });
+    console.log("[DOCTOR-INFO] Query:", { doctorName, specialization });
 
-    const selectCols = {
-      fullName: doctors.fullName,
-      specialization: doctors.specialization,
-      workingHours: doctors.workingHours,
-    };
-
-    let doctorList: { fullName: string; specialization: string; workingHours: unknown }[] = [];
-
+    let doctorList: DoctorRow[] = [];
     try {
-      if (doctorName) {
-        doctorList = await db
-          .select(selectCols)
-          .from(doctors)
-          .where(ilike(doctors.fullName, `%${doctorName}%`));
-      } else if (specialization) {
-        doctorList = await db
-          .select(selectCols)
-          .from(doctors)
-          .where(ilike(doctors.specialization, `%${specialization}%`));
-      } else {
-        doctorList = await db.select(selectCols).from(doctors);
-      }
+      doctorList = await queryWithRetry(doctorName, specialization);
     } catch (dbErr) {
-      console.error("[DOCTOR-INFO] DB query error:", dbErr);
+      console.error("[DOCTOR-INFO] DB query failed after retry:", dbErr);
       return NextResponse.json({
         results: [{
           toolCallId,
@@ -66,7 +77,6 @@ export async function POST(req: NextRequest) {
 
     console.log("[DOCTOR-INFO] Found:", doctorList.length, "doctors");
 
-    // Non-critical logging — never let this break the response
     try {
       await db.insert(aiActions).values({
         actionType: "doctor_info",
@@ -99,10 +109,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({
-      results: [{
-        toolCallId,
-        result: infoLines.join(" | "),
-      }],
+      results: [{ toolCallId, result: infoLines.join(" | ") }],
     });
   } catch (error) {
     console.error("[DOCTOR-INFO] Unexpected error:", error);
