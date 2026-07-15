@@ -5,6 +5,36 @@ import { db } from "@/db";
 import { appointments, aiActions } from "@/db/schema";
 import { extractToolCall, parseDate, parseTime } from "@/lib/vapi";
 
+type AppointmentInsert = {
+  patientName: string;
+  patientPhone: string | null;
+  doctorName: string;
+  appointmentDate: string;
+  appointmentTime: string;
+  appointmentAt: Date;
+  status: string;
+  source: string;
+  notes: string | null;
+};
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`timeout_${ms}ms`)), ms)),
+  ]);
+}
+
+async function insertAppointmentWithRetry(values: AppointmentInsert) {
+  const doInsert = () => db.insert(appointments).values(values).returning();
+  try {
+    return await withTimeout(doInsert(), 4000);
+  } catch (err) {
+    console.warn("[BOOK] First insert attempt failed, retrying:", (err as Error).message);
+  }
+  // Neon should be warm now after the first attempt initiated cold start
+  return withTimeout(doInsert(), 4000);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -37,7 +67,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // If a param looks like a combined datetime (2026-07-12T13:00), split it
+    // Split combined datetime (e.g. "2026-07-23T14:00") into date + time
     if (rawDate && rawDate.includes("T") && !rawTime) {
       const [d, t] = rawDate.split("T");
       rawDate = d;
@@ -71,9 +101,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const [newAppointment] = await db
-      .insert(appointments)
-      .values({
+    let newAppointment;
+    try {
+      [newAppointment] = await insertAppointmentWithRetry({
         patientName,
         patientPhone: phone,
         doctorName: doctorName ?? "Belirtilmedi",
@@ -83,8 +113,13 @@ export async function POST(req: NextRequest) {
         status: "onaylandi",
         source: "voice_agent",
         notes: notes ?? null,
-      })
-      .returning();
+      });
+    } catch (dbErr) {
+      console.error("[BOOK] DB insert failed after retry:", dbErr);
+      return NextResponse.json({
+        results: [{ toolCallId, result: "Randevu kaydedilemedi, sistem geçici olarak yanıt vermiyor. Lütfen tekrar deneyin." }],
+      });
+    }
 
     console.log("[BOOK] Appointment created:", newAppointment.id);
 
