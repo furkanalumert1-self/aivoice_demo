@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     try {
       await db.insert(aiActions).values({
         actionType: "create_appointment",
-        payload: { patientName, phone, doctorName, date: datePart, time },
+        payload: { patientName, phone, doctorName, date: datePart, time: timePart },
         result: `Randevu başarıyla oluşturuldu. ID: ${newAppointment.id}`,
       });
     } catch { /* ignore */ }
