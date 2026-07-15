@@ -1,3 +1,13 @@
+/** Parse tool arguments — handles JSON string, plain object, or undefined. */
+function parseArguments(raw: unknown): Record<string, string> {
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw); } catch { return {}; }
+  }
+  if (typeof raw === "object") return raw as Record<string, string>;
+  return {};
+}
+
 /**
  * Extract tool call data from a VAPI webhook payload.
  *
@@ -27,12 +37,7 @@ export function extractToolCall(body: Record<string, unknown>) {
   if (arrayToolCall) {
     const toolCallId: string = (arrayToolCall.id as string) ?? "unknown";
     const fn = (arrayToolCall.function ?? arrayToolCall) as Record<string, unknown>;
-    let params: Record<string, string> = {};
-    try {
-      params = JSON.parse((fn.arguments as string) ?? "{}");
-    } catch {
-      params = ((fn.parameters ?? fn.args) as Record<string, string>) ?? {};
-    }
+    const params = parseArguments(fn.arguments ?? fn.parameters ?? fn.args);
     return { toolCallId, params };
   }
 
@@ -42,14 +47,7 @@ export function extractToolCall(body: Record<string, unknown>) {
 
   if (legacyCall) {
     const toolCallId: string = (legacyCall.id as string) ?? "unknown";
-    let params: Record<string, string> = {};
-    // v1 sends parameters as an object (not a JSON string)
-    const rawParams = legacyCall.parameters ?? legacyCall.arguments ?? legacyCall.args;
-    if (typeof rawParams === "string") {
-      try { params = JSON.parse(rawParams); } catch { /* ignore */ }
-    } else if (rawParams && typeof rawParams === "object") {
-      params = rawParams as Record<string, string>;
-    }
+    const params = parseArguments(legacyCall.parameters ?? legacyCall.arguments ?? legacyCall.args);
     return { toolCallId, params };
   }
 

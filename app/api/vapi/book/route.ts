@@ -8,9 +8,12 @@ import { extractToolCall, parseDate, parseTime } from "@/lib/vapi";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { toolCallId, params } = extractToolCall(body);
 
-    console.log("[BOOK] toolCallId:", toolCallId, "| raw params:", JSON.stringify(params));
+    // Full body dump for diagnosing unknown VAPI payload shapes
+    console.log("[BOOK] Full body:", JSON.stringify(body).slice(0, 800));
+
+    const { toolCallId, params } = extractToolCall(body);
+    console.log("[BOOK] toolCallId:", toolCallId, "| params:", JSON.stringify(params));
 
     // Accept flexible parameter names from VAPI tool schemas
     const patientName = params.patientName ?? params.patient_name ?? params.name ?? null;
@@ -18,15 +21,36 @@ export async function POST(req: NextRequest) {
     const doctorName = params.doctorName ?? params.doctor_name ?? params.doctor ?? null;
     const notes = params.notes ?? null;
 
-    const rawDate = params.date ?? params.appointmentDate ?? params.appointment_date ?? params.tarih ?? null;
-    const rawTime = params.time ?? params.appointmentTime ?? params.appointment_time ?? params.saat ?? null;
+    let rawDate: string | null =
+      params.date ?? params.appointmentDate ?? params.appointment_date ??
+      params.tarih ?? params.dateStr ?? params.dateString ?? null;
+    let rawTime: string | null =
+      params.time ?? params.appointmentTime ?? params.appointment_time ??
+      params.saat ?? params.timeStr ?? params.timeString ?? null;
+
+    // Fallback: scan all params for ISO date / time-looking values
+    if (!rawDate || !rawTime) {
+      for (const val of Object.values(params)) {
+        const s = String(val ?? "").trim();
+        if (!rawDate && /^\d{4}-\d{2}-\d{2}/.test(s)) rawDate = s.slice(0, 10);
+        if (!rawTime && /^\d{2}:\d{2}/.test(s)) rawTime = s.slice(0, 5);
+      }
+    }
+
+    // If a param looks like a combined datetime (2026-07-12T13:00), split it
+    if (rawDate && rawDate.includes("T") && !rawTime) {
+      const [d, t] = rawDate.split("T");
+      rawDate = d;
+      rawTime = t?.slice(0, 5) ?? null;
+    }
+
     const datePart = parseDate(rawDate);
     const timePart = parseTime(rawTime);
 
-    console.log("[BOOK] Parsed → date:", datePart, "| time:", timePart, "| patient:", patientName, "| phone:", phone);
+    console.log("[BOOK] Resolved → date:", datePart, "| time:", timePart, "| patient:", patientName, "| phone:", phone);
 
     if (!patientName || !phone || !datePart || !timePart) {
-      console.error("[BOOK] Missing required fields:", { patientName: !!patientName, phone: !!phone, rawDate, datePart, rawTime, timePart });
+      console.error("[BOOK] Missing:", { patientName: !!patientName, phone: !!phone, rawDate, datePart, rawTime, timePart, allKeys: Object.keys(params) });
       return NextResponse.json({
         results: [{
           toolCallId,
