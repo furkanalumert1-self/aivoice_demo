@@ -138,37 +138,62 @@ export async function POST(req: NextRequest) {
     const cost = callData.cost != null ? String(callData.cost.toFixed(6)) : null;
     const vapiCallId = callData.id ?? null;
 
-    const [savedCallLog] = await db
-      .insert(callLogs)
-      .values({
-        callerNumber,
-        vapiCallId,
+    let savedCallLogId: string | null = null;
+
+    if (vapiCallId) {
+      // Known call ID: upsert to avoid duplicates
+      const [saved] = await db
+        .insert(callLogs)
+        .values({
+          callerNumber,
+          vapiCallId,
+          transcript,
+          summary,
+          duration,
+          intent,
+          callStatus: "completed",
+          cost,
+          recordingUrl,
+        })
+        .onConflictDoUpdate({
+          target: callLogs.vapiCallId,
+          set: { summary, intent, duration, callStatus: "completed", recordingUrl },
+        })
+        .returning();
+      savedCallLogId = saved.id;
+    } else {
+      // No call ID: plain insert (two nulls never conflict in unique constraint)
+      const [saved] = await db
+        .insert(callLogs)
+        .values({
+          callerNumber,
+          vapiCallId: null,
+          transcript,
+          summary,
+          duration,
+          intent,
+          callStatus: "completed",
+          cost,
+          recordingUrl,
+        })
+        .returning();
+      savedCallLogId = saved.id;
+    }
+
+    // Keep legacy calls table in sync (best-effort)
+    try {
+      await db.insert(calls).values({
+        callerPhone: callerNumber,
+        durationSeconds: duration,
         transcript,
         summary,
-        duration,
-        intent,
-        callStatus: "completed",
         cost,
+        outcome: intent,
         recordingUrl,
-      })
-      .onConflictDoUpdate({
-        target: callLogs.vapiCallId,
-        set: { summary, intent, duration, callStatus: "completed", recordingUrl },
-      })
-      .returning();
+      });
+    } catch { /* ignore legacy table errors */ }
 
-    // Keep legacy calls table in sync
-    await db.insert(calls).values({
-      callerPhone: callerNumber,
-      durationSeconds: duration,
-      transcript,
-      summary,
-      cost,
-      outcome: intent,
-      recordingUrl,
-    });
-
-    return NextResponse.json({ success: true, callLogId: savedCallLog.id });
+    return NextResponse.json({ success: true, callLogId: savedCallLogId });
   } catch (error) {
     console.error("Call ended webhook error:", error);
     return NextResponse.json({ error: "İşlem başarısız" }, { status: 500 });

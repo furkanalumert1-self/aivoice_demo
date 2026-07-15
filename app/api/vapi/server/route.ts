@@ -85,38 +85,48 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const messageType: string = body?.message?.type ?? body?.type ?? "";
 
-    console.log("[VAPI-SERVER] Event type:", messageType);
+    console.log("[VAPI-SERVER] Event type:", messageType, "| Body keys:", Object.keys(body));
 
-    // Dynamic context injection at call start
-    if (messageType === "call-started" || messageType === "assistant-request") {
-      let context = "";
-      try {
-        context = await buildClinicContext();
-      } catch (err) {
-        console.error("[VAPI-SERVER] Context build error:", err);
-        context = "Klinik: Ali Mert Klinik\nDoktor bilgisi şu an yüklenemedi.";
-      }
-
-      console.log("[VAPI-SERVER] Injecting context:\n", context);
-
-      // assistantOverrides: inject a system message with live clinic data.
-      // VAPI appends these to the assistant's existing system prompt.
-      return NextResponse.json({
-        assistantOverrides: {
-          model: {
-            messages: [
-              {
-                role: "system",
-                content: `--- GÜNCEL KLİNİK BİLGİLERİ (otomatik yüklendi) ---\n${context}\n--- BU BİLGİLERİ KULLANARAK CEVAP VER, DOKTOR ADINI UYDURMA ---`,
-              },
-            ],
-          },
-        },
-      });
+    // Skip events that don't need context injection
+    const skipTypes = ["end-of-call-report", "function-call", "transcript", "speech-update", "hang", "tool-calls"];
+    if (skipTypes.includes(messageType)) {
+      return NextResponse.json({ received: true });
     }
 
-    // All other VAPI events — acknowledge silently
-    return NextResponse.json({ received: true });
+    // For call-started, assistant-request, or any unknown event — inject context
+    let context = "";
+    try {
+      // 4-second timeout to avoid VAPI timing out waiting for our response
+      const timeoutPromise = new Promise<string>((resolve) =>
+        setTimeout(() => resolve("Klinik: Ali Mert Klinik\nDoktor bilgisi yüklenemedi (zaman aşımı)."), 4000)
+      );
+      context = await Promise.race([buildClinicContext(), timeoutPromise]);
+    } catch (err) {
+      console.error("[VAPI-SERVER] Context build error:", err);
+      context = "Klinik: Ali Mert Klinik\nDoktor bilgisi şu an yüklenemedi.";
+    }
+
+    console.log("[VAPI-SERVER] Injecting context (first 200 chars):", context.slice(0, 200));
+
+    const contextBlock = `--- GÜNCEL KLİNİK BİLGİLERİ (otomatik yüklendi) ---\n${context}\n--- BU BİLGİLERİ KULLANARAK CEVAP VER, DOKTOR ADINI UYDURMA ---`;
+
+    // variableValues: replaces {{clinic_context}} in the VAPI system prompt
+    // model.messages: injects as an extra system message (belt-and-suspenders)
+    return NextResponse.json({
+      assistantOverrides: {
+        variableValues: {
+          clinic_context: contextBlock,
+        },
+        model: {
+          messages: [
+            {
+              role: "system",
+              content: contextBlock,
+            },
+          ],
+        },
+      },
+    });
   } catch (error) {
     console.error("[VAPI-SERVER] Error:", error);
     return NextResponse.json({ received: true });
