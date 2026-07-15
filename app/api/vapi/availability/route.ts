@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { appointments, doctors } from "@/db/schema";
 import { and, gte, lte, ne, ilike } from "drizzle-orm";
-import { extractToolCall } from "@/lib/vapi";
+import { extractToolCall, parseDate, parseTime } from "@/lib/vapi";
 
 export async function POST(req: NextRequest) {
   let toolCallId = "unknown";
@@ -16,33 +16,26 @@ export async function POST(req: NextRequest) {
 
     console.log("[AVAILABILITY] Incoming params:", JSON.stringify(params));
 
-    // Accept multiple date param names
+    // Accept multiple date/time param names
     const doctorName = params.doctorName ?? params.doctor_name ?? params.doctor ?? null;
     const specialization = params.specialization ?? params.uzmanlik ?? null;
-    const targetDate =
+    const rawDate =
       params.date ?? params.preferredDate ?? params.appointmentDate ??
-      params.appointment_date ?? params.preferred_date ?? null;
-    const preferredTime =
+      params.appointment_date ?? params.preferred_date ?? params.tarih ?? null;
+    const rawTime =
       params.time ?? params.preferredTime ?? params.appointmentTime ??
-      params.appointment_time ?? params.preferred_time ?? null;
+      params.appointment_time ?? params.preferred_time ?? params.saat ?? null;
+
+    const targetDate = parseDate(rawDate);
+    const preferredTime = parseTime(rawTime);
+
+    console.log("[AVAILABILITY] Parsed → date:", targetDate, "| time:", preferredTime, "| raw:", { rawDate, rawTime });
 
     if (!targetDate) {
       return NextResponse.json({
         results: [{
           toolCallId,
-          result: "Müsaitlik kontrolü için tarih bilgisi gereklidir. Lütfen randevu tarihini belirtin.",
-        }],
-      });
-    }
-
-    // Validate and parse date
-    const parsedDate = new Date(targetDate);
-    if (isNaN(parsedDate.getTime())) {
-      console.error("[AVAILABILITY] Invalid date:", targetDate);
-      return NextResponse.json({
-        results: [{
-          toolCallId,
-          result: `Geçersiz tarih formatı: "${targetDate}". Lütfen YYYY-AA-GG formatında belirtin (örn: 2026-07-11).`,
+          result: `Müsaitlik kontrolü için tarih bilgisi gereklidir. Alınan değer: "${rawDate ?? "yok"}". Lütfen tarihi belirtin (örn: 2026-07-19).`,
         }],
       });
     }
