@@ -4,20 +4,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { appointments, doctors } from "@/db/schema";
 import { and, gte, lte, ne, ilike } from "drizzle-orm";
+import { extractToolCall } from "@/lib/vapi";
 
 export async function POST(req: NextRequest) {
   let toolCallId = "unknown";
   try {
     const body = await req.json();
-    const toolCall = body?.message?.toolCallList?.[0];
-    toolCallId = toolCall?.id ?? "unknown";
-
-    let params: Record<string, string> = {};
-    try {
-      params = JSON.parse(toolCall?.function?.arguments ?? "{}");
-    } catch {
-      params = toolCall?.function?.parameters ?? body;
-    }
+    const extracted = extractToolCall(body);
+    toolCallId = extracted.toolCallId;
+    const params = extracted.params;
 
     console.log("[AVAILABILITY] Incoming params:", JSON.stringify(params));
 

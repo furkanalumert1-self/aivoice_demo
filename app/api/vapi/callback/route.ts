@@ -3,19 +3,12 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { callbackRequests, aiActions } from "@/db/schema";
+import { extractToolCall } from "@/lib/vapi";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const toolCall = body?.message?.toolCallList?.[0];
-    const toolCallId = toolCall?.id ?? "unknown";
-
-    let params: Record<string, string> = {};
-    try {
-      params = JSON.parse(toolCall?.function?.arguments ?? "{}");
-    } catch {
-      params = toolCall?.function?.parameters ?? body;
-    }
+    const { toolCallId, params } = extractToolCall(body);
 
     const patientName = params.patientName ?? params.patient_name ?? params.name ?? null;
     const phone = params.phone ?? params.patientPhone ?? params.patient_phone ?? params.phoneNumber;

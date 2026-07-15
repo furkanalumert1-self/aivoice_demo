@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { doctors, aiActions } from "@/db/schema";
 import { ilike } from "drizzle-orm";
+import { extractToolCall } from "@/lib/vapi";
 
 const DAYS: Record<string, string> = {
   mon: "Pazartesi", tue: "Salı", wed: "Çarşamba",
@@ -14,15 +15,9 @@ export async function POST(req: NextRequest) {
   let toolCallId = "unknown";
   try {
     const body = await req.json();
-    const toolCall = body?.message?.toolCallList?.[0];
-    toolCallId = toolCall?.id ?? "unknown";
-
-    let params: Record<string, string> = {};
-    try {
-      params = JSON.parse(toolCall?.function?.arguments ?? "{}");
-    } catch {
-      params = toolCall?.function?.parameters ?? body;
-    }
+    const extracted = extractToolCall(body);
+    toolCallId = extracted.toolCallId;
+    const params = extracted.params;
 
     const doctorName = params.doctorName ?? params.doctor_name ?? params.doctor ?? null;
     const specialization =
