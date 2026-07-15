@@ -202,8 +202,54 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true });
     }
 
-    // Non-context events: acknowledge
-    const skipTypes = ["function-call", "transcript", "speech-update", "hang", "tool-calls"];
+    // Tool calls: proxy to the appropriate route handler
+    // VAPI routes tool calls to the assistant Server URL when tools have no individual URL
+    if (messageType === "tool-calls" || messageType === "function-call") {
+      const TOOL_ROUTES: Record<string, string> = {
+        create_appointment:     "/api/vapi/book",
+        checkavailability:      "/api/vapi/availability",
+        cancel_appointment:     "/api/vapi/cancel",
+        reschedule_appointment: "/api/vapi/reschedule",
+        doktor_sorgula:         "/api/vapi/doctor-info",
+        createCallbackRequest:  "/api/vapi/callback",
+      };
+
+      // Extract function name from all known VAPI payload shapes
+      const tc = (
+        (msg?.toolCalls    as Record<string, unknown>[])?.[0] ??
+        (msg?.toolCallList as Record<string, unknown>[])?.[0]
+      ) as Record<string, unknown> | undefined;
+      const legacyFn = msg?.functionCall as Record<string, unknown> | undefined;
+      const functionName: string =
+        ((tc?.function as Record<string, unknown>)?.name as string) ??
+        (legacyFn?.name as string) ?? "";
+
+      const targetPath = TOOL_ROUTES[functionName];
+      console.log("[VAPI-SERVER] Tool call:", functionName, "→", targetPath ?? "unknown");
+
+      if (targetPath) {
+        try {
+          const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "https://aivoice-demo.vercel.app").replace(/\/$/, "");
+          const proxyRes = await fetch(`${appUrl}${targetPath}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const proxyData = await proxyRes.json();
+          return NextResponse.json(proxyData);
+        } catch (proxyErr) {
+          console.error("[VAPI-SERVER] Proxy error:", proxyErr);
+          return NextResponse.json({
+            results: [{ toolCallId: "unknown", result: "Sistem geçici olarak yanıt vermiyor. Tekrar deneyin." }],
+          });
+        }
+      }
+
+      return NextResponse.json({ received: true });
+    }
+
+    // Other non-context events: acknowledge silently
+    const skipTypes = ["transcript", "speech-update", "hang"];
     if (skipTypes.includes(messageType)) {
       return NextResponse.json({ received: true });
     }
