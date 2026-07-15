@@ -29,19 +29,22 @@ async function queryDoctors(doctorName: string | null, specialization: string | 
   return db.select(SELECT_COLS).from(doctors);
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timeout_${ms}ms`)), ms)),
+  ]);
+}
+
 async function queryWithRetry(doctorName: string | null, specialization: string | null): Promise<DoctorRow[]> {
-  // First attempt
+  // First attempt: 4s timeout (cold-start typically resolves in 2-4s)
   try {
-    return await Promise.race([
-      queryDoctors(doctorName, specialization),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 6000)),
-    ]);
+    return await withTimeout(queryDoctors(doctorName, specialization), 4000);
   } catch (err) {
-    console.warn("[DOCTOR-INFO] First attempt failed, retrying:", err);
+    console.warn("[DOCTOR-INFO] First attempt failed, retrying immediately:", (err as Error).message);
   }
-  // Retry after brief pause to let Neon cold start finish
-  await new Promise((r) => setTimeout(r, 1000));
-  return queryDoctors(doctorName, specialization);
+  // Retry immediately — Neon should be warm after the first attempt initiated cold start
+  return withTimeout(queryDoctors(doctorName, specialization), 4000);
 }
 
 export async function POST(req: NextRequest) {
