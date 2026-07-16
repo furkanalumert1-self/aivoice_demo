@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { doctors, clinicSettings, services, calls, callLogs } from "@/db/schema";
+import { createAppointment } from "@/lib/booking";
+import { extractToolCall } from "@/lib/vapi";
 
 // ── Context injection ────────────────────────────────────────────────────────
 
@@ -202,11 +204,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true });
     }
 
-    // Tool calls: proxy to the appropriate route handler
-    // VAPI routes tool calls to the assistant Server URL when tools have no individual URL
+    // Tool calls: handle inline or proxy to the appropriate route handler
     if (messageType === "tool-calls" || messageType === "function-call") {
       const TOOL_ROUTES: Record<string, string> = {
-        create_appointment:     "/api/vapi/book",
         checkavailability:      "/api/vapi/availability",
         cancel_appointment:     "/api/vapi/cancel",
         reschedule_appointment: "/api/vapi/reschedule",
@@ -214,7 +214,7 @@ export async function POST(req: NextRequest) {
         createCallbackRequest:  "/api/vapi/callback",
       };
 
-      // Extract function name from all known VAPI payload shapes
+      // Extract function name and params from all known VAPI payload shapes
       const tc = (
         (msg?.toolCalls    as Record<string, unknown>[])?.[0] ??
         (msg?.toolCallList as Record<string, unknown>[])?.[0]
@@ -224,8 +224,25 @@ export async function POST(req: NextRequest) {
         ((tc?.function as Record<string, unknown>)?.name as string) ??
         (legacyFn?.name as string) ?? "";
 
+      console.log("[VAPI-SERVER] Tool call:", functionName);
+
+      // Handle create_appointment inline — avoids HTTP proxy round-trip and extra cold start
+      if (functionName === "create_appointment") {
+        const { toolCallId, params } = extractToolCall(body);
+        console.log("[VAPI-SERVER] create_appointment inline | toolCallId:", toolCallId, "| params:", JSON.stringify(params));
+        try {
+          const result = await createAppointment(toolCallId, params);
+          return NextResponse.json(result);
+        } catch (err) {
+          console.error("[VAPI-SERVER] create_appointment error:", err);
+          return NextResponse.json({
+            results: [{ toolCallId, result: "Randevu kaydedilemedi, lütfen tekrar deneyin." }],
+          });
+        }
+      }
+
       const targetPath = TOOL_ROUTES[functionName];
-      console.log("[VAPI-SERVER] Tool call:", functionName, "→", targetPath ?? "unknown");
+      console.log("[VAPI-SERVER] Proxying", functionName, "→", targetPath ?? "unknown");
 
       if (targetPath) {
         try {
