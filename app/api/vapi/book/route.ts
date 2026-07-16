@@ -26,13 +26,14 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 async function insertAppointmentWithRetry(values: AppointmentInsert) {
   const doInsert = () => db.insert(appointments).values(values).returning();
+  // First attempt: generous timeout to survive Neon cold start (typically 2-6s)
   try {
-    return await withTimeout(doInsert(), 4000);
+    return await withTimeout(doInsert(), 7000);
   } catch (err) {
     console.warn("[BOOK] First insert attempt failed, retrying:", (err as Error).message);
   }
-  // Neon should be warm now after the first attempt initiated cold start
-  return withTimeout(doInsert(), 4000);
+  // Retry: Neon is warm after first attempt triggered resume
+  return withTimeout(doInsert(), 2500);
 }
 
 export async function POST(req: NextRequest) {

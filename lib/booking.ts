@@ -60,12 +60,16 @@ export async function insertAppointment(values: {
   notes: string | null;
 }) {
   const doInsert = () => db.insert(appointments).values(values).returning();
+
+  // First attempt: generous 7s timeout to survive Neon cold start (typically 2-6s)
   try {
-    return (await withTimeout(doInsert(), 5000))[0];
+    return (await withTimeout(doInsert(), 7000))[0];
   } catch (err) {
     console.warn("[BOOKING] First insert failed, retrying:", (err as Error).message);
   }
-  return (await withTimeout(doInsert(), 5000))[0];
+
+  // Retry with short timeout — Neon must be warm after the first attempt triggered resume
+  return (await withTimeout(doInsert(), 2500))[0];
 }
 
 export async function createAppointment(
