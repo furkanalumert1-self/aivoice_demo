@@ -226,14 +226,14 @@ export async function POST(req: NextRequest) {
 
       console.log("[VAPI-SERVER] Tool call:", functionName);
 
-      // Handle create_appointment and doktor_sorgula inline — avoids HTTP proxy round-trip
-      if (functionName === "create_appointment" || functionName === "doktor_sorgula") {
+      // Handle create_appointment and doktor_sorgula (+ doctor_info alias) inline — avoids HTTP proxy round-trip
+      if (functionName === "create_appointment" || functionName === "doktor_sorgula" || functionName === "doctor_info") {
         const { toolCallId, params } = extractToolCall(body);
         console.log(`[VAPI-SERVER] ${functionName} inline | toolCallId:`, toolCallId, "| params:", JSON.stringify(params));
         try {
           const result = functionName === "create_appointment"
             ? await createAppointment(toolCallId, params)
-            : await queryDoctorInfo(toolCallId, params);
+            : await queryDoctorInfo(toolCallId, params); // covers doktor_sorgula + doctor_info
           return NextResponse.json(result);
         } catch (err) {
           console.error(`[VAPI-SERVER] ${functionName} error:`, err);
@@ -282,7 +282,7 @@ export async function POST(req: NextRequest) {
     let context = "";
     try {
       const timeoutPromise = new Promise<string>((resolve) =>
-        setTimeout(() => resolve("Klinik: Ali Mert Klinik\nDoktor bilgisi yüklenemedi (zaman aşımı)."), 4000)
+        setTimeout(() => resolve("Klinik: Ali Mert Klinik\nDoktor bilgisi yüklenemedi (zaman aşımı)."), 8000)
       );
       context = await Promise.race([buildClinicContext(), timeoutPromise]);
     } catch (err) {

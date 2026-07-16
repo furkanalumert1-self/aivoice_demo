@@ -118,7 +118,8 @@ export async function POST(req: NextRequest) {
         notes: notes ?? null,
       });
     } catch (dbErr) {
-      console.error("[BOOK] DB insert failed after retry:", dbErr);
+      const errMsg = (dbErr as Error)?.message ?? String(dbErr);
+      console.error("[BOOK] DB insert failed after retry — type:", typeof dbErr, "| msg:", errMsg);
       return NextResponse.json({
         results: [{ toolCallId, result: "Randevu kaydedilemedi, sistem geçici olarak yanıt vermiyor. Lütfen tekrar deneyin." }],
       });
