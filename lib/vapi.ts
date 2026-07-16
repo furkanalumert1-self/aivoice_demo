@@ -97,9 +97,19 @@ export function parseDate(raw: string | null | undefined): string | null {
   return null;
 }
 
+// Turkish number words → integer (hours 0-23)
+const TR_HOURS: Record<string, number> = {
+  sıfır: 0, bir: 1, iki: 2, üç: 3, dört: 4, beş: 5,
+  altı: 6, yedi: 7, sekiz: 8, dokuz: 9, on: 10,
+  "on bir": 11, "on iki": 12, "on üç": 13, "on dört": 14,
+  "on beş": 15, "on altı": 16, "on yedi": 17, "on sekiz": 18,
+  "on dokuz": 19, yirmi: 20, "yirmi bir": 21, "yirmi iki": 22, "yirmi üç": 23,
+};
+
 /**
  * Normalise a time string to HH:MM.
- * Handles "11:00", "11:00:00", "11.00", "11-00", "1100", "11" (hour only), etc.
+ * Handles "11:00", "11:00:00", "11.00", "11-00", "1100", "11" (hour only),
+ * Turkish words ("saat on", "on dört", "on buçuk"), etc.
  * Returns null if the input cannot be parsed.
  */
 export function parseTime(raw: string | null | undefined): string | null {
@@ -124,6 +134,26 @@ export function parseTime(raw: string | null | undefined): string | null {
 
   // Just hour: "11" → "11:00"
   if (/^\d{1,2}$/.test(s)) return `${s.padStart(2, "0")}:00`;
+
+  // Turkish time words: "saat on", "on dört", "saat on buçuk", "on için", etc.
+  const norm = s
+    .toLowerCase()
+    .replace(/^saat\s+/, "")   // strip leading "saat "
+    .replace(/\s+için$/, "")   // strip trailing " için"
+    .replace(/\s+de$/, "")     // strip trailing " de/da"
+    .replace(/\s+da$/, "")
+    .trim();
+
+  // Half-hour: "on buçuk" → 10:30
+  const halfMatch = norm.match(/^(.+?)\s+buçuk$/);
+  if (halfMatch) {
+    const h = TR_HOURS[halfMatch[1].trim()];
+    if (h !== undefined) return `${String(h).padStart(2, "0")}:30`;
+  }
+
+  // Exact hour: "on" → 10:00, "on dört" → 14:00
+  const h = TR_HOURS[norm];
+  if (h !== undefined) return `${String(h).padStart(2, "0")}:00`;
 
   return null;
 }

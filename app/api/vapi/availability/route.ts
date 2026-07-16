@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         results: [{
           toolCallId,
-          result: `Müsaitlik kontrolü için tarih bilgisi gereklidir. Alınan değer: "${rawDate ?? "yok"}". Lütfen tarihi belirtin (örn: 2026-07-19).`,
+          result: "Müsaitlik kontrolü için tarih bilgisi gereklidir. Lütfen hastadan randevu tarihini alın.",
         }],
       });
     }
