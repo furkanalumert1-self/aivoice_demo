@@ -63,10 +63,22 @@ const TURKISH_MONTHS: Record<string, string> = {
   eylül: "09", ekim: "10", kasım: "11", aralık: "12",
 };
 
+// Turkish word-form day numbers 1–31
+const TR_DAYS: Record<string, number> = {
+  bir: 1, iki: 2, üç: 3, dört: 4, beş: 5, altı: 6, yedi: 7, sekiz: 8, dokuz: 9,
+  on: 10, "on bir": 11, "on iki": 12, "on üç": 13, "on dört": 14, "on beş": 15,
+  "on altı": 16, "on yedi": 17, "on sekiz": 18, "on dokuz": 19,
+  yirmi: 20, "yirmi bir": 21, "yirmi iki": 22, "yirmi üç": 23, "yirmi dört": 24,
+  "yirmi beş": 25, "yirmi altı": 26, "yirmi yedi": 27, "yirmi sekiz": 28,
+  "yirmi dokuz": 29, otuz: 30, "otuz bir": 31,
+};
+
+const MONTH_PATTERN = "ocak|şubat|mart|nisan|mayıs|haziran|temmuz|ağustos|eylül|ekim|kasım|aralık";
+
 /**
  * Normalise a date string to YYYY-MM-DD.
- * Handles ISO, DD/MM/YYYY, DD.MM.YYYY, Turkish month names, etc.
- * Returns null if the input cannot be parsed.
+ * Handles ISO, DD/MM/YYYY, DD.MM.YYYY, Turkish month names (numeric and word day),
+ * and combined datetime strings. Returns null if the input cannot be parsed.
  */
 export function parseDate(raw: string | null | undefined): string | null {
   if (!raw) return null;
@@ -75,19 +87,36 @@ export function parseDate(raw: string | null | undefined): string | null {
   // Already ISO: 2026-07-19
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
+  // Combined ISO datetime: "2026-07-24T13:00" — extract date portion
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0, 10);
+
   // DD/MM/YYYY, DD.MM.YYYY, DD-MM-YYYY
   const dmy = s.match(/^(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})$/);
   if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
 
-  // Turkish: "19 Temmuz" or "19 Temmuz 2026"
   const normalized = s.toLowerCase().replace(/i̇/g, "i");
-  const trk = normalized.match(
-    /(\d{1,2})\s+(ocak|şubat|mart|nisan|mayıs|haziran|temmuz|ağustos|eylül|ekim|kasım|aralık)(?:\s+(\d{4}))?/
+
+  // Turkish with numeric day: "19 Temmuz" or "19 Temmuz 2026"
+  const trkNum = normalized.match(
+    new RegExp(`(\\d{1,2})\\s+(${MONTH_PATTERN})(?:\\s+(\\d{4}))?`)
   );
-  if (trk) {
-    const year = trk[3] ?? String(new Date().getFullYear());
-    const month = TURKISH_MONTHS[trk[2]];
-    return `${year}-${month}-${trk[1].padStart(2, "0")}`;
+  if (trkNum) {
+    const year = trkNum[3] ?? String(new Date().getFullYear());
+    const month = TURKISH_MONTHS[trkNum[2]];
+    return `${year}-${month}-${trkNum[1].padStart(2, "0")}`;
+  }
+
+  // Turkish with word-form day: "yirmi dört Temmuz" or "yirmi dört Temmuz 2026"
+  const trkWord = normalized.match(
+    new RegExp(`(otuz bir|yirmi (?:bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz)|on (?:bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz)|otuz|yirmi|on|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz)\\s+(${MONTH_PATTERN})(?:\\s+(\\d{4}))?`)
+  );
+  if (trkWord) {
+    const day = TR_DAYS[trkWord[1].trim()];
+    if (day !== undefined) {
+      const year = trkWord[3] ?? String(new Date().getFullYear());
+      const month = TURKISH_MONTHS[trkWord[2]];
+      return `${year}-${month}-${String(day).padStart(2, "0")}`;
+    }
   }
 
   // Native Date parse as last resort (handles "July 19 2026", "2026/07/19", etc.)

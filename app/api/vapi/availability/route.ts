@@ -6,6 +6,18 @@ import { appointments, doctors } from "@/db/schema";
 import { and, gte, lte, ne, ilike } from "drizzle-orm";
 import { extractToolCall, parseDate, parseTime } from "@/lib/vapi";
 
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`timeout_${ms}ms`)), ms)),
+  ]);
+}
+
+async function runWithRetry<T>(fn: () => Promise<T>, ms = 4000): Promise<T> {
+  try { return await withTimeout(fn(), ms); } catch { /* retry */ }
+  return withTimeout(fn(), ms);
+}
+
 export async function POST(req: NextRequest) {
   let toolCallId = "unknown";
   try {
@@ -40,21 +52,23 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Find doctor by name or specialization
+    // Find doctor by name or specialization (with Neon cold-start retry)
     let resolvedDoctorName: string | null = doctorName;
     if (!resolvedDoctorName && specialization) {
-      const found = await db
-        .select({ fullName: doctors.fullName })
-        .from(doctors)
-        .where(ilike(doctors.specialization, `%${specialization}%`))
-        .limit(1);
+      const found = await runWithRetry(() =>
+        db.select({ fullName: doctors.fullName })
+          .from(doctors)
+          .where(ilike(doctors.specialization, `%${specialization}%`))
+          .limit(1)
+      );
       resolvedDoctorName = found[0]?.fullName ?? null;
     } else if (resolvedDoctorName) {
-      const found = await db
-        .select({ fullName: doctors.fullName })
-        .from(doctors)
-        .where(ilike(doctors.fullName, `%${resolvedDoctorName}%`))
-        .limit(1);
+      const found = await runWithRetry(() =>
+        db.select({ fullName: doctors.fullName })
+          .from(doctors)
+          .where(ilike(doctors.fullName, `%${resolvedDoctorName!}%`))
+          .limit(1)
+      );
       resolvedDoctorName = found[0]?.fullName ?? resolvedDoctorName;
     }
 
@@ -63,16 +77,17 @@ export async function POST(req: NextRequest) {
     const endOfDay = new Date(targetDate);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const booked = await db
-      .select({ appointmentTime: appointments.appointmentTime, doctorName: appointments.doctorName })
-      .from(appointments)
-      .where(
-        and(
-          gte(appointments.appointmentAt, startOfDay),
-          lte(appointments.appointmentAt, endOfDay),
-          ne(appointments.status, "iptal")
+    const booked = await runWithRetry(() =>
+      db.select({ appointmentTime: appointments.appointmentTime, doctorName: appointments.doctorName })
+        .from(appointments)
+        .where(
+          and(
+            gte(appointments.appointmentAt, startOfDay),
+            lte(appointments.appointmentAt, endOfDay),
+            ne(appointments.status, "iptal")
+          )
         )
-      );
+    );
 
     const bookedTimes = booked
       .filter((a) => !resolvedDoctorName || a.doctorName === resolvedDoctorName)

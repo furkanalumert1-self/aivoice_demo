@@ -80,18 +80,26 @@ Adımlar:
    - Başka herhangi bir cevap → "Randevuyu onaylıyor musunuz? Lütfen evet veya hayır deyin." diye sor, tekrar bekle
 8. Onay alındıktan sonra create_appointment çağır (başka soru SORMA, direkt çağır):
    Parametreler: patientName, phone, doctorName, date (ISO: YYYY-MM-DD), time (HH:MM 24 saat)
-   → Tarihi MUTLAKA sayısal ISO formatına çevir:
-      yirmi üç temmuz → 2026-07-23
+   → Tarihi MUTLAKA sayısal ISO formatına çevir (gün temmuz ayı için):
       yirmi dört temmuz → 2026-07-24
+      yirmi üç temmuz → 2026-07-23
       on yedi temmuz → 2026-07-17
-   → Saati MUTLAKA HH:MM formatına çevir:
+      24 Temmuz → 2026-07-24
+      Kural: [gün sayısı] [ay adı] → YYYY-[ay]-[gün] (yıl bilinmiyorsa 2026 kullan)
+   → Saati MUTLAKA HH:MM formatına çevir (Türkçe saat sayısı → 24 saat):
+      dokuz → 09:00
       on → 10:00
       saat on → 10:00
       on buçuk → 10:30
+      on bir → 11:00
+      on iki → 12:00
+      on üç → 13:00
       on dört → 14:00
+      on beş → 15:00
+      on altı → 16:00
+      on yedi → 17:00
       saat on dört → 14:00
       on iki on üç → 12:13
-      dokuz → 09:00
    → Bu format bilgilerini ve sayıları kullanıcıya ASLA söyleme veya okuma
 9. "Randevunuz oluşturuldu." de, görüşmeyi bitir
 

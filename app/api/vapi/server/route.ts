@@ -250,11 +250,15 @@ export async function POST(req: NextRequest) {
       if (targetPath) {
         try {
           const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "https://aivoice-demo.vercel.app").replace(/\/$/, "");
+          const controller = new AbortController();
+          const proxyTimer = setTimeout(() => controller.abort(), 8000);
           const proxyRes = await fetch(`${appUrl}${targetPath}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
+            signal: controller.signal,
           });
+          clearTimeout(proxyTimer);
           const proxyData = await proxyRes.json();
           return NextResponse.json(proxyData);
         } catch (proxyErr) {
