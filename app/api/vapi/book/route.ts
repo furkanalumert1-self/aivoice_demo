@@ -81,23 +81,25 @@ export async function POST(req: NextRequest) {
 
     if (!patientName || !phone || !datePart || !timePart) {
       console.error("[BOOK] Missing:", { patientName: !!patientName, phone: !!phone, rawDate, datePart, rawTime, timePart, allKeys: Object.keys(params) });
+      const missing = [
+        !patientName && "hasta adı",
+        !phone && "telefon numarası",
+        !datePart && "randevu tarihi",
+        !timePart && "randevu saati",
+      ].filter(Boolean).join(", ");
       return NextResponse.json({
         results: [{
           toolCallId,
-          result: `Randevu oluşturulamadı: ${[
-            !patientName && "hasta adı",
-            !phone && "telefon numarası",
-            !datePart && `tarih (alınan: "${rawDate ?? "yok"}")`,
-            !timePart && `saat (alınan: "${rawTime ?? "yok"}")`,
-          ].filter(Boolean).join(", ")} eksik veya hatalı. Lütfen tekrar belirtin.`,
+          result: `${missing} alınamadı. Lütfen hastadan ${missing} tekrar alın.`,
         }],
       });
     }
 
     const appointmentAt = new Date(`${datePart}T${timePart}:00`);
     if (isNaN(appointmentAt.getTime())) {
+      console.error("[BOOK] Invalid datetime:", datePart, timePart);
       return NextResponse.json({
-        results: [{ toolCallId, result: "Geçersiz tarih veya saat formatı. YYYY-AA-GG ve SS:DD formatında giriniz." }],
+        results: [{ toolCallId, result: "Tarih veya saat geçersiz. Lütfen hastadan tarihi ve saati tekrar alın." }],
       });
     }
 

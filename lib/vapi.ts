@@ -99,7 +99,7 @@ export function parseDate(raw: string | null | undefined): string | null {
 
 /**
  * Normalise a time string to HH:MM.
- * Handles "11:00", "11:00:00", "11.00", "11" (hour only), etc.
+ * Handles "11:00", "11:00:00", "11.00", "11-00", "1100", "11" (hour only), etc.
  * Returns null if the input cannot be parsed.
  */
 export function parseTime(raw: string | null | undefined): string | null {
@@ -110,9 +110,17 @@ export function parseTime(raw: string | null | undefined): string | null {
   const colon = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
   if (colon) return `${colon[1].padStart(2, "0")}:${colon[2]}`;
 
-  // HH.MM
-  const dot = s.match(/^(\d{1,2})\.(\d{2})$/);
-  if (dot) return `${dot[1].padStart(2, "0")}:${dot[2]}`;
+  // HH.MM or HH-MM
+  const sep = s.match(/^(\d{1,2})[.\-](\d{2})$/);
+  if (sep) return `${sep[1].padStart(2, "0")}:${sep[2]}`;
+
+  // HHMM (4-digit no separator, e.g. "1213")
+  const fourDigit = s.match(/^(\d{2})(\d{2})$/);
+  if (fourDigit) {
+    const h = parseInt(fourDigit[1], 10);
+    const m = parseInt(fourDigit[2], 10);
+    if (h >= 0 && h <= 23 && m >= 0 && m <= 59) return `${fourDigit[1]}:${fourDigit[2]}`;
+  }
 
   // Just hour: "11" → "11:00"
   if (/^\d{1,2}$/.test(s)) return `${s.padStart(2, "0")}:00`;
