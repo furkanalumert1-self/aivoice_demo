@@ -84,22 +84,14 @@ export default async function CallDetailPage({
       {/* Audio player */}
       {call.recordingUrl && (
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-900">Ses Kaydı</h2>
-            <a
-              href={call.recordingUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-blue-600 hover:text-blue-800 underline"
-            >
-              Yeni sekmede aç ↗
-            </a>
-          </div>
-          <audio controls src={call.recordingUrl} className="w-full rounded-lg" preload="metadata">
-            Tarayıcınız ses oynatmayı desteklemiyor.{" "}
-            <a href={call.recordingUrl} target="_blank" rel="noopener noreferrer">
-              Kaydı indirin.
-            </a>
+          <h2 className="text-sm font-semibold text-gray-900 mb-3">Ses Kaydı</h2>
+          <audio
+            controls
+            src={`/api/audio/proxy?url=${encodeURIComponent(call.recordingUrl)}`}
+            className="w-full rounded-lg"
+            preload="metadata"
+          >
+            Tarayıcınız ses oynatmayı desteklemiyor.
           </audio>
         </div>
       )}

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { doctors, clinicSettings, services, calls, callLogs } from "@/db/schema";
 import { createAppointment } from "@/lib/booking";
+import { queryDoctorInfo } from "@/lib/doctor-info";
 import { extractToolCall } from "@/lib/vapi";
 
 // ── Context injection ────────────────────────────────────────────────────────
@@ -210,7 +211,6 @@ export async function POST(req: NextRequest) {
         checkavailability:      "/api/vapi/availability",
         cancel_appointment:     "/api/vapi/cancel",
         reschedule_appointment: "/api/vapi/reschedule",
-        doktor_sorgula:         "/api/vapi/doctor-info",
         createCallbackRequest:  "/api/vapi/callback",
       };
 
@@ -226,18 +226,21 @@ export async function POST(req: NextRequest) {
 
       console.log("[VAPI-SERVER] Tool call:", functionName);
 
-      // Handle create_appointment inline — avoids HTTP proxy round-trip and extra cold start
-      if (functionName === "create_appointment") {
+      // Handle create_appointment and doktor_sorgula inline — avoids HTTP proxy round-trip
+      if (functionName === "create_appointment" || functionName === "doktor_sorgula") {
         const { toolCallId, params } = extractToolCall(body);
-        console.log("[VAPI-SERVER] create_appointment inline | toolCallId:", toolCallId, "| params:", JSON.stringify(params));
+        console.log(`[VAPI-SERVER] ${functionName} inline | toolCallId:`, toolCallId, "| params:", JSON.stringify(params));
         try {
-          const result = await createAppointment(toolCallId, params);
+          const result = functionName === "create_appointment"
+            ? await createAppointment(toolCallId, params)
+            : await queryDoctorInfo(toolCallId, params);
           return NextResponse.json(result);
         } catch (err) {
-          console.error("[VAPI-SERVER] create_appointment error:", err);
-          return NextResponse.json({
-            results: [{ toolCallId, result: "Randevu kaydedilemedi, lütfen tekrar deneyin." }],
-          });
+          console.error(`[VAPI-SERVER] ${functionName} error:`, err);
+          const errMsg = functionName === "create_appointment"
+            ? "Randevu kaydedilemedi, lütfen tekrar deneyin."
+            : "Doktor bilgilerine şu an ulaşılamıyor. Lütfen tekrar deneyin.";
+          return NextResponse.json({ results: [{ toolCallId, result: errMsg }] });
         }
       }
 
