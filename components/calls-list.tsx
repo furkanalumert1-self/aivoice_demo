@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Phone, Play, X, FileText, Clock } from "lucide-react";
+import { Phone, X, FileText, Clock } from "lucide-react";
+import { AudioPlayer } from "@/components/audio-player";
 import { formatDateTime, formatDuration } from "@/lib/utils";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -149,12 +150,7 @@ export function CallsList({ calls }: { calls: CallRow[] }) {
             {open.recordingUrl && (
               <div className="border-b border-gray-100 px-5 py-3">
                 <p className="label-mono text-gray-400 mb-2">Kayıt</p>
-                <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
-                  <button className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-teal-600 text-white hover:bg-teal-700 transition-colors">
-                    <Play className="h-3.5 w-3.5" />
-                  </button>
-                  <audio controls src={`/api/audio/proxy?url=${encodeURIComponent(open.recordingUrl)}`} className="flex-1 h-8" preload="metadata" style={{ accentColor: "hsl(var(--primary))" }} />
-                </div>
+                <AudioPlayer src={`/api/audio/proxy?url=${encodeURIComponent(open.recordingUrl)}`} />
               </div>
             )}
 

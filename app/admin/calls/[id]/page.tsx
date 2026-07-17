@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { formatDateTime, formatDuration } from "@/lib/utils";
 import { Phone, Clock, FileText, ArrowLeft } from "lucide-react";
+import { AudioPlayer } from "@/components/audio-player";
 import Link from "next/link";
 
 const intentConfig: Record<string, { label: string; className: string }> = {
@@ -85,14 +86,7 @@ export default async function CallDetailPage({
       {call.recordingUrl && (
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-900 mb-3">Ses Kaydı</h2>
-          <audio
-            controls
-            src={`/api/audio/proxy?url=${encodeURIComponent(call.recordingUrl)}`}
-            className="w-full rounded-lg"
-            preload="metadata"
-          >
-            Tarayıcınız ses oynatmayı desteklemiyor.
-          </audio>
+          <AudioPlayer src={`/api/audio/proxy?url=${encodeURIComponent(call.recordingUrl)}`} />
         </div>
       )}
 
