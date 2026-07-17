@@ -68,10 +68,10 @@ async function getStats(): Promise<Stats> {
 
   try {
     const [row] = await db
-      .select({ avg: sql<number | null>`round(avg(${callLogs.duration}) filter (where ${callLogs.duration} > 0))` })
+      .select({ total: sql<number | null>`sum(${callLogs.duration}) filter (where ${callLogs.duration} > 0)` })
       .from(callLogs)
       .where(sql`date(${callLogs.createdAt}) = current_date`);
-    stats.avgDuration = row?.avg ? Math.round(Number(row.avg)) : null;
+    stats.avgDuration = row?.total ? Math.round(Number(row.total)) : null;
   } catch (e) { console.error("DASHBOARD_CALLS_ERROR avgDuration:", e); }
 
   try {
@@ -97,7 +97,7 @@ async function getStats(): Promise<Stats> {
 const statCards = (s: Stats) => [
   { label: "Bugünkü Çağrı",       value: s.todayCallCount,             icon: Phone,     grad: "var(--grad-tile-1)", iconClass: "text-teal-600" },
   { label: "Bugünkü Randevu",     value: s.aiAppointmentCount,         icon: Calendar,  grad: "var(--grad-tile-2)", iconClass: "text-indigo-600" },
-  { label: "Bugünkü Ort. Süre",   value: formatDuration(s.avgDuration),icon: Clock,     grad: "var(--grad-tile-3)", iconClass: "text-emerald-600" },
+  { label: "Bugün Top. Süre",     value: formatDuration(s.avgDuration),icon: Clock,     grad: "var(--grad-tile-3)", iconClass: "text-emerald-600" },
   { label: "İptal Randevu",       value: s.cancelledCount,             icon: XCircle,   grad: "var(--grad-tile-4)", iconClass: "text-rose-600" },
 ];
 
