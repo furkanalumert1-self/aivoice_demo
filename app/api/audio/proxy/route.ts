@@ -22,6 +22,11 @@ export async function GET(req: NextRequest) {
   const range = req.headers.get("range");
   if (range) upstreamHeaders["Range"] = range;
 
+  // VAPI storage requires the API key — attach only for VAPI's own domain
+  if (parsedUrl.hostname.includes("vapi.ai") && process.env.VAPI_API_KEY) {
+    upstreamHeaders["Authorization"] = `Bearer ${process.env.VAPI_API_KEY}`;
+  }
+
   try {
     const upstream = await fetch(parsedUrl.toString(), { headers: upstreamHeaders });
 
