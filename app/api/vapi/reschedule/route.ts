@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { appointments, aiActions } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, or, sql } from "drizzle-orm";
 import { extractToolCall } from "@/lib/vapi";
 
 export async function POST(req: NextRequest) {
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       const [result] = await db
         .update(appointments)
         .set(updateData)
-        .where(eq(appointments.patientPhone, phone))
+        .where(sql`(patient_phone = ${phone} OR phone = ${phone}) AND status != 'iptal'`)
         .returning();
       rescheduled = result;
     }
