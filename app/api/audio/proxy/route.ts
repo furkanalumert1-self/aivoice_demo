@@ -18,14 +18,17 @@ async function fetchFreshRecordingUrl(vapiCallId: string): Promise<string | null
     const data = await res.json() as Record<string, unknown>;
     const artifact = data.artifact as Record<string, unknown> | undefined;
 
-    // Try all known VAPI response paths for recording URL
+    // presignedMonoUrl / presignedStereoUrl are fresh signed URLs (no auth needed)
+    // recordingUrl is a raw R2 URL that requires Bearer auth — avoid it
     const url =
+      (artifact?.presignedMonoUrl as string | undefined) ??
+      (artifact?.presignedStereoUrl as string | undefined) ??
+      (artifact?.presignedCustomerUrl as string | undefined) ??
       (artifact?.recordingUrl as string | undefined) ??
-      (artifact?.recording as Record<string, unknown> | undefined)?.url as string | undefined ??
       (data.recordingUrl as string | undefined) ??
       null;
 
-    console.log("[AUDIO-PROXY] VAPI callId:", vapiCallId, "| artifact keys:", Object.keys(artifact ?? {}), "| recordingUrl:", url?.slice(0, 60) ?? "null");
+    console.log("[AUDIO-PROXY] VAPI callId:", vapiCallId, "| presignedMono:", (artifact?.presignedMonoUrl as string | undefined)?.slice(0, 60) ?? "null", "| resolved url:", url?.slice(0, 60) ?? "null");
     return url;
   } catch (err) {
     console.error("[AUDIO-PROXY] VAPI API fetch error:", err);
