@@ -59,11 +59,12 @@ export async function queryDoctorInfo(
   console.log("[DOCTOR-INFO] Found:", doctorList.length, "doctors");
 
   if (doctorList.length === 0) {
-    const criteria = doctorName
-      ? `"${doctorName}"`
-      : specialization ? `"${specialization}" uzmanlığında` : "";
+    const criteria = specialization ?? doctorName ?? "belirtilen";
     return {
-      results: [{ toolCallId, result: `${criteria} doktor bulunamadı. Kliniğimizdeki doktorları listeleyeyim mi?` }],
+      results: [{
+        toolCallId,
+        result: `DOKTOR_YOK: "${criteria}" uzmanlık alanında sistemde kayıtlı doktor bulunmamaktadır. Başka bir uzmanlık alanı sorabilirsiniz.`,
+      }],
     };
   }
 
