@@ -3,20 +3,32 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 
 async function fetchFreshRecordingUrl(vapiCallId: string): Promise<string | null> {
-  if (!process.env.VAPI_API_KEY) return null;
+  if (!process.env.VAPI_API_KEY) {
+    console.error("[AUDIO-PROXY] VAPI_API_KEY not set");
+    return null;
+  }
   try {
     const res = await fetch(`https://api.vapi.ai/call/${vapiCallId}`, {
       headers: { Authorization: `Bearer ${process.env.VAPI_API_KEY}` },
     });
     if (!res.ok) {
-      console.error("[AUDIO-PROXY] VAPI call fetch error:", res.status, vapiCallId);
+      console.error("[AUDIO-PROXY] VAPI API error:", res.status, "callId:", vapiCallId);
       return null;
     }
     const data = await res.json() as Record<string, unknown>;
     const artifact = data.artifact as Record<string, unknown> | undefined;
-    return (artifact?.recordingUrl as string) ?? null;
+
+    // Try all known VAPI response paths for recording URL
+    const url =
+      (artifact?.recordingUrl as string | undefined) ??
+      (artifact?.recording as Record<string, unknown> | undefined)?.url as string | undefined ??
+      (data.recordingUrl as string | undefined) ??
+      null;
+
+    console.log("[AUDIO-PROXY] VAPI callId:", vapiCallId, "| artifact keys:", Object.keys(artifact ?? {}), "| recordingUrl:", url?.slice(0, 60) ?? "null");
+    return url;
   } catch (err) {
-    console.error("[AUDIO-PROXY] VAPI API error:", err);
+    console.error("[AUDIO-PROXY] VAPI API fetch error:", err);
     return null;
   }
 }
