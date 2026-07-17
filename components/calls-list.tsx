@@ -153,7 +153,7 @@ export function CallsList({ calls }: { calls: CallRow[] }) {
                   <button className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-teal-600 text-white hover:bg-teal-700 transition-colors">
                     <Play className="h-3.5 w-3.5" />
                   </button>
-                  <audio controls src={open.recordingUrl} className="flex-1 h-8" style={{ accentColor: "hsl(var(--primary))" }} />
+                  <audio controls src={`/api/audio/proxy?url=${encodeURIComponent(open.recordingUrl)}`} className="flex-1 h-8" preload="metadata" style={{ accentColor: "hsl(var(--primary))" }} />
                 </div>
               </div>
             )}

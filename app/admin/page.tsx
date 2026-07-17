@@ -38,7 +38,7 @@ type RecentAppointment = {
 type Stats = {
   todayCallCount: number;
   aiAppointmentCount: number;
-  avgDuration: number;
+  avgDuration: number | null;
   cancelledCount: number;
   recentCalls: RecentCall[];
   recentAppointments: RecentAppointment[];
@@ -47,7 +47,7 @@ type Stats = {
 const emptyStats: Stats = {
   todayCallCount: 0,
   aiAppointmentCount: 0,
-  avgDuration: 0,
+  avgDuration: null,
   cancelledCount: 0,
   recentCalls: [],
   recentAppointments: [],
@@ -67,8 +67,8 @@ async function getStats(): Promise<Stats> {
   } catch (e) { console.error("DASHBOARD_APPOINTMENTS_ERROR aiAppointmentCount:", e); }
 
   try {
-    const [row] = await db.select({ avg: sql<number>`round(coalesce(avg(${callLogs.duration}), 0))` }).from(callLogs);
-    stats.avgDuration = Math.round(row?.avg ?? 0);
+    const [row] = await db.select({ avg: sql<number | null>`round(avg(${callLogs.duration}) filter (where ${callLogs.duration} > 0))` }).from(callLogs);
+    stats.avgDuration = row?.avg ? Math.round(Number(row.avg)) : null;
   } catch (e) { console.error("DASHBOARD_CALLS_ERROR avgDuration:", e); }
 
   try {

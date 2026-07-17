@@ -147,7 +147,15 @@ async function handleEndOfCall(body: Record<string, unknown>) {
   const phoneNumber = (callData.phoneNumber ?? {}) as Record<string, unknown>;
 
   const callerNumber = (customer.number ?? phoneNumber.number ?? "Bilinmiyor") as string;
-  const duration = calculateDuration(callData.startedAt as string, callData.endedAt as string);
+
+  // VAPI sends timestamps at different paths across versions; try all known locations
+  const duration =
+    calculateDuration(callData.startedAt as string, callData.endedAt as string) ??
+    calculateDuration(msg.startedAt as string, msg.endedAt as string) ??
+    (callData.durationMs   ? Math.round(Number(callData.durationMs)      / 1000) : null) ??
+    (callData.durationSeconds ? Math.round(Number(callData.durationSeconds))     : null) ??
+    (msg.durationMs        ? Math.round(Number(msg.durationMs)           / 1000) : null) ??
+    (msg.durationSeconds   ? Math.round(Number(msg.durationSeconds))             : null);
   const transcript = (artifact.transcript ?? null) as string | null;
   const summary = generateTurkishSummary(transcript ?? undefined);
   const intent = detectIntent(transcript ?? undefined);
