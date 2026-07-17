@@ -67,7 +67,10 @@ async function getStats(): Promise<Stats> {
   } catch (e) { console.error("DASHBOARD_APPOINTMENTS_ERROR aiAppointmentCount:", e); }
 
   try {
-    const [row] = await db.select({ avg: sql<number | null>`round(avg(${callLogs.duration}) filter (where ${callLogs.duration} > 0))` }).from(callLogs);
+    const [row] = await db
+      .select({ avg: sql<number | null>`round(avg(${callLogs.duration}) filter (where ${callLogs.duration} > 0))` })
+      .from(callLogs)
+      .where(sql`date(${callLogs.createdAt}) = current_date`);
     stats.avgDuration = row?.avg ? Math.round(Number(row.avg)) : null;
   } catch (e) { console.error("DASHBOARD_CALLS_ERROR avgDuration:", e); }
 
@@ -94,7 +97,7 @@ async function getStats(): Promise<Stats> {
 const statCards = (s: Stats) => [
   { label: "Bugünkü Çağrı",       value: s.todayCallCount,             icon: Phone,     grad: "var(--grad-tile-1)", iconClass: "text-teal-600" },
   { label: "Bugünkü Randevu",     value: s.aiAppointmentCount,         icon: Calendar,  grad: "var(--grad-tile-2)", iconClass: "text-indigo-600" },
-  { label: "Ort. Görüşme Süresi", value: formatDuration(s.avgDuration),icon: Clock,     grad: "var(--grad-tile-3)", iconClass: "text-emerald-600" },
+  { label: "Bugünkü Ort. Süre",   value: formatDuration(s.avgDuration),icon: Clock,     grad: "var(--grad-tile-3)", iconClass: "text-emerald-600" },
   { label: "İptal Randevu",       value: s.cancelledCount,             icon: XCircle,   grad: "var(--grad-tile-4)", iconClass: "text-rose-600" },
 ];
 

@@ -17,30 +17,9 @@ export async function GET(req: NextRequest) {
     return new NextResponse("Only HTTPS URLs allowed", { status: 400 });
   }
 
-  // Forward Range header so the browser can seek within the audio
-  const upstreamHeaders: Record<string, string> = {};
-  const range = req.headers.get("range");
-  if (range) upstreamHeaders["Range"] = range;
-
-  try {
-    const upstream = await fetch(parsedUrl.toString(), { headers: upstreamHeaders });
-
-    const responseHeaders: Record<string, string> = {
-      "Content-Type": upstream.headers.get("content-type") ?? "audio/mpeg",
-      "Accept-Ranges": upstream.headers.get("accept-ranges") ?? "bytes",
-      "Cache-Control": "private, max-age=3600",
-    };
-    const contentLength = upstream.headers.get("content-length");
-    const contentRange = upstream.headers.get("content-range");
-    if (contentLength) responseHeaders["Content-Length"] = contentLength;
-    if (contentRange) responseHeaders["Content-Range"] = contentRange;
-
-    return new NextResponse(upstream.body, {
-      status: upstream.status,
-      headers: responseHeaders,
-    });
-  } catch (err) {
-    console.error("[AUDIO-PROXY] Fetch error:", err);
-    return new NextResponse("Failed to fetch audio", { status: 502 });
-  }
+  // Redirect to upstream URL — <audio> elements are not CORS-restricted and
+  // can follow cross-origin redirects natively. This avoids proxying large
+  // audio files through Vercel functions (timeout / size constraints) and lets
+  // the browser talk directly to S3 including range requests for seeking.
+  return NextResponse.redirect(parsedUrl.toString(), 302);
 }

@@ -165,6 +165,8 @@ async function handleEndOfCall(body: Record<string, unknown>) {
   const vapiCallId = (callData.id ?? null) as string | null;
 
   console.log("[VAPI-SERVER] end-of-call-report | callId:", vapiCallId, "| caller:", callerNumber, "| duration:", duration);
+  // Dump duration-related fields to diagnose which path VAPI uses
+  console.log("[VAPI-SERVER] duration fields | call.startedAt:", callData.startedAt, "| call.endedAt:", callData.endedAt, "| call.durationMs:", callData.durationMs, "| call.durationSeconds:", callData.durationSeconds, "| msg.startedAt:", msg.startedAt, "| msg.endedAt:", msg.endedAt);
 
   if (vapiCallId) {
     await db
