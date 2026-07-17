@@ -2,14 +2,47 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 
+async function fetchFreshRecordingUrl(vapiCallId: string): Promise<string | null> {
+  if (!process.env.VAPI_API_KEY) return null;
+  try {
+    const res = await fetch(`https://api.vapi.ai/call/${vapiCallId}`, {
+      headers: { Authorization: `Bearer ${process.env.VAPI_API_KEY}` },
+    });
+    if (!res.ok) {
+      console.error("[AUDIO-PROXY] VAPI call fetch error:", res.status, vapiCallId);
+      return null;
+    }
+    const data = await res.json() as Record<string, unknown>;
+    const artifact = data.artifact as Record<string, unknown> | undefined;
+    return (artifact?.recordingUrl as string) ?? null;
+  } catch (err) {
+    console.error("[AUDIO-PROXY] VAPI API error:", err);
+    return null;
+  }
+}
+
 export async function GET(req: NextRequest) {
-  const url = req.nextUrl.searchParams.get("url");
-  if (!url) return new NextResponse("Missing url", { status: 400 });
+  const vapiCallId = req.nextUrl.searchParams.get("vapiCallId");
+  const urlParam = req.nextUrl.searchParams.get("url");
+
+  let audioUrl: string | null = null;
+
+  // Prefer vapiCallId — always fetches a fresh signed URL from VAPI API
+  if (vapiCallId) {
+    audioUrl = await fetchFreshRecordingUrl(vapiCallId);
+    if (!audioUrl) {
+      return new NextResponse("Recording not found", { status: 404 });
+    }
+  } else if (urlParam) {
+    audioUrl = urlParam;
+  } else {
+    return new NextResponse("Missing vapiCallId or url", { status: 400 });
+  }
 
   // Only allow HTTPS to prevent SSRF to internal services
   let parsedUrl: URL;
   try {
-    parsedUrl = new URL(url);
+    parsedUrl = new URL(audioUrl);
   } catch {
     return new NextResponse("Invalid url", { status: 400 });
   }
@@ -22,11 +55,6 @@ export async function GET(req: NextRequest) {
   const range = req.headers.get("range");
   if (range) upstreamHeaders["Range"] = range;
 
-  // VAPI storage requires the API key — attach only for VAPI's own domain
-  if (parsedUrl.hostname.includes("vapi.ai") && process.env.VAPI_API_KEY) {
-    upstreamHeaders["Authorization"] = `Bearer ${process.env.VAPI_API_KEY}`;
-  }
-
   try {
     const upstream = await fetch(parsedUrl.toString(), { headers: upstreamHeaders });
 
@@ -38,8 +66,7 @@ export async function GET(req: NextRequest) {
     const responseHeaders: Record<string, string> = {
       "Content-Type": upstream.headers.get("content-type") ?? "audio/mpeg",
       "Accept-Ranges": "bytes",
-      "Cache-Control": "private, max-age=3600",
-      // Allow browser audio element to read the response (same-origin after proxy)
+      "Cache-Control": "private, max-age=300",
       "Access-Control-Allow-Origin": "*",
     };
     const contentLength = upstream.headers.get("content-length");

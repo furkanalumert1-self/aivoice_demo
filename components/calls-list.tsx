@@ -150,7 +150,13 @@ export function CallsList({ calls }: { calls: CallRow[] }) {
             {open.recordingUrl && (
               <div className="border-b border-gray-100 px-5 py-3">
                 <p className="label-mono text-gray-400 mb-2">Kayıt</p>
-                <AudioPlayer src={`/api/audio/proxy?url=${encodeURIComponent(open.recordingUrl)}`} />
+                <AudioPlayer
+                  src={
+                    open.vapiCallId
+                      ? `/api/audio/proxy?vapiCallId=${encodeURIComponent(open.vapiCallId)}`
+                      : `/api/audio/proxy?url=${encodeURIComponent(open.recordingUrl)}`
+                  }
+                />
               </div>
             )}
 

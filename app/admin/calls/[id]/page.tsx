@@ -86,7 +86,13 @@ export default async function CallDetailPage({
       {call.recordingUrl && (
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-sm font-semibold text-gray-900 mb-3">Ses Kaydı</h2>
-          <AudioPlayer src={`/api/audio/proxy?url=${encodeURIComponent(call.recordingUrl)}`} />
+          <AudioPlayer
+            src={
+              call.vapiCallId
+                ? `/api/audio/proxy?vapiCallId=${encodeURIComponent(call.vapiCallId)}`
+                : `/api/audio/proxy?url=${encodeURIComponent(call.recordingUrl)}`
+            }
+          />
         </div>
       )}
 
