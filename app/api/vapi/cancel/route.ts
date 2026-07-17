@@ -34,12 +34,19 @@ export async function POST(req: NextRequest) {
         .returning();
       cancelled = result;
     } else if (phone) {
+      // Normalize digits from both stored phone and lookup phone, then prefix-match.
+      // Handles partial readbacks and format differences (spaces, dashes, etc.)
       const [result] = await db
         .update(appointments)
         .set({ status: "iptal" })
-        .where(sql`(patient_phone = ${phone} OR phone = ${phone}) AND status != 'iptal'`)
+        .where(sql`
+          REGEXP_REPLACE(COALESCE(patient_phone, phone, ''), '[^0-9]', '', 'g')
+            LIKE REGEXP_REPLACE(${phone}, '[^0-9]', '', 'g') || '%'
+          AND status != 'iptal'
+        `)
         .returning();
       cancelled = result;
+      console.log("[CANCEL] phone received:", phone, "| found:", cancelled?.id ?? "none");
     }
 
     if (!cancelled) {

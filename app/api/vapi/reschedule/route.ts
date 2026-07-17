@@ -50,9 +50,14 @@ export async function POST(req: NextRequest) {
       const [result] = await db
         .update(appointments)
         .set(updateData)
-        .where(sql`(patient_phone = ${phone} OR phone = ${phone}) AND status != 'iptal'`)
+        .where(sql`
+          REGEXP_REPLACE(COALESCE(patient_phone, phone, ''), '[^0-9]', '', 'g')
+            LIKE REGEXP_REPLACE(${phone}, '[^0-9]', '', 'g') || '%'
+          AND status != 'iptal'
+        `)
         .returning();
       rescheduled = result;
+      console.log("[RESCHEDULE] phone received:", phone, "| found:", rescheduled?.id ?? "none");
     }
 
     if (!rescheduled) {

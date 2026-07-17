@@ -61,7 +61,7 @@ Hasta tarih veya saat söylediğinde HEMEN kabul et, bir daha sormayın:
 - Hastanın verdiği bilgiyi ASLA tekrar isteme, ASLA doğrulama döngüsüne girme
 
 ## TELEFON NUMARASI — ÇOK ÖNEMLİ
-- Telefon numarasını al, geri oku ve onay iste
+- Telefon numarasını al, TAMAMEN geri oku ve onay iste — asla yarıda kesme
 - Kaç haneli olduğunu ASLA sayma, ASLA sorgulama
 - Hasta onayladıysa randevu oluştururken aynen kullan
 
