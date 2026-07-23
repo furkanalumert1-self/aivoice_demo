@@ -6,6 +6,8 @@ import { sql, eq, count, desc } from "drizzle-orm";
 import { Phone, Calendar, Clock, XCircle, ArrowRight } from "lucide-react";
 import { formatDuration, formatDateTime } from "@/lib/utils";
 import Link from "next/link";
+import { getLocale } from "@/lib/locale";
+import { t } from "@/lib/i18n";
 
 const intentConfig: Record<string, { label: string; color: string; dot: string }> = {
   randevu_alma:  { label: "Randevu Alma",  color: "text-teal-700",   dot: "bg-teal-500"   },
@@ -94,29 +96,29 @@ async function getStats(): Promise<Stats> {
   return stats;
 }
 
-const statCards = (s: Stats) => [
-  { label: "Bugünkü Çağrı",       value: s.todayCallCount,             icon: Phone,     grad: "var(--grad-tile-1)", iconClass: "text-teal-600" },
-  { label: "Bugünkü Randevu",     value: s.aiAppointmentCount,         icon: Calendar,  grad: "var(--grad-tile-2)", iconClass: "text-indigo-600" },
-  { label: "Bugün Top. Süre",     value: formatDuration(s.avgDuration),icon: Clock,     grad: "var(--grad-tile-3)", iconClass: "text-emerald-600" },
-  { label: "İptal Randevu",       value: s.cancelledCount,             icon: XCircle,   grad: "var(--grad-tile-4)", iconClass: "text-rose-600" },
-];
-
 export default async function AdminPage() {
-  const stats = await getStats();
+  const [stats, locale] = await Promise.all([getStats(), getLocale()]);
+
+  const statCards = [
+    { label: t(locale, "todayCalls"),             value: stats.todayCallCount,              icon: Phone,    grad: "var(--grad-tile-1)", iconClass: "text-teal-600" },
+    { label: t(locale, "todayAppointments"),       value: stats.aiAppointmentCount,          icon: Calendar, grad: "var(--grad-tile-2)", iconClass: "text-indigo-600" },
+    { label: t(locale, "totalDuration"),           value: formatDuration(stats.avgDuration), icon: Clock,    grad: "var(--grad-tile-3)", iconClass: "text-emerald-600" },
+    { label: t(locale, "cancelledAppointments"),   value: stats.cancelledCount,              icon: XCircle,  grad: "var(--grad-tile-4)", iconClass: "text-rose-600" },
+  ];
 
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">Dashboard</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Klinik AI Call Center — canlı özet</p>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">{t(locale, "dashboardTitle")}</h1>
+          <p className="mt-0.5 text-sm text-gray-500">{t(locale, "dashboardSub")}</p>
         </div>
       </div>
 
-      {/* Stat tiles — Clinica gradient cards */}
+      {/* Stat tiles */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {statCards(stats).map((card) => {
+        {statCards.map((card) => {
           const Icon = card.icon;
           return (
             <div
@@ -141,16 +143,16 @@ export default async function AdminPage() {
         {/* Recent Calls */}
         <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white" style={{ boxShadow: "var(--shadow-soft)" }}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-            <h2 className="text-[15px] font-semibold text-gray-900">Son Çağrılar</h2>
+            <h2 className="text-[15px] font-semibold text-gray-900">{t(locale, "recentCalls")}</h2>
             <Link href="/admin/calls" className="flex items-center gap-1 text-[12px] text-teal-600 font-medium hover:text-teal-700 transition-colors">
-              Tümünü gör <ArrowRight className="h-3.5 w-3.5" />
+              {t(locale, "viewAll")} <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
           <div className="divide-y divide-gray-50">
             {stats.recentCalls.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <Phone className="h-8 w-8 mb-2 text-gray-200" />
-                <p className="text-[13px] text-gray-400">Henüz çağrı kaydı yok</p>
+                <p className="text-[13px] text-gray-400">{t(locale, "noCallsYet")}</p>
               </div>
             ) : stats.recentCalls.map((call) => {
               const cfg = intentConfig[call.intent ?? "diger"] ?? intentConfig.diger;
@@ -160,7 +162,7 @@ export default async function AdminPage() {
                     <Phone className="h-4 w-4 text-teal-500" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium text-gray-900 truncate">{call.callerNumber ?? "Bilinmiyor"}</p>
+                    <p className="text-[13px] font-medium text-gray-900 truncate">{call.callerNumber ?? t(locale, "unknown")}</p>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${cfg.dot}`} />
                       <span className="text-[11px] text-gray-400">{cfg.label}</span>
@@ -179,16 +181,16 @@ export default async function AdminPage() {
         {/* Recent Appointments */}
         <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white" style={{ boxShadow: "var(--shadow-soft)" }}>
           <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-            <h2 className="text-[15px] font-semibold text-gray-900">Son Randevular</h2>
+            <h2 className="text-[15px] font-semibold text-gray-900">{t(locale, "recentAppointments")}</h2>
             <Link href="/admin/appointments" className="flex items-center gap-1 text-[12px] text-teal-600 font-medium hover:text-teal-700 transition-colors">
-              Tümünü gör <ArrowRight className="h-3.5 w-3.5" />
+              {t(locale, "viewAll")} <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
           <div className="divide-y divide-gray-50">
             {stats.recentAppointments.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <Calendar className="h-8 w-8 mb-2 text-gray-200" />
-                <p className="text-[13px] text-gray-400">Henüz randevu kaydı yok</p>
+                <p className="text-[13px] text-gray-400">{t(locale, "noAppointmentsYet")}</p>
               </div>
             ) : stats.recentAppointments.map((appt) => {
               const isIptal = appt.status === "iptal";
@@ -198,7 +200,7 @@ export default async function AdminPage() {
                     <Calendar className="h-4 w-4 text-gray-500" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium text-gray-900 truncate">{appt.patientName ?? "Bilinmiyor"}</p>
+                    <p className="text-[13px] font-medium text-gray-900 truncate">{appt.patientName ?? t(locale, "unknown")}</p>
                     <p className="text-[11px] text-gray-400 truncate">
                       {appt.doctorName ?? "—"}
                       {appt.appointmentDate ? ` · ${appt.appointmentDate}` : ""}
@@ -207,7 +209,7 @@ export default async function AdminPage() {
                   </div>
                   <span className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${isIptal ? "bg-red-50 text-red-700" : "bg-teal-50 text-teal-700"}`}>
                     <span className={`h-1.5 w-1.5 rounded-full ${isIptal ? "bg-red-500" : "bg-teal-500"}`} />
-                    {isIptal ? "İptal" : "Aktif"}
+                    {isIptal ? t(locale, "cancelled") : t(locale, "active")}
                   </span>
                 </div>
               );
