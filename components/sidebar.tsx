@@ -89,7 +89,7 @@ function SidebarInner() {
             <p className="label-mono px-3 pb-1.5 pt-2 text-gray-400">{t(locale, group.labelKey)}</p>
             <div className="space-y-0.5">
               {group.items.map((item) => {
-                const active = isActive(item.href, item.exact);
+                const active = isActive(item.href, "exact" in item ? item.exact : false);
                 const Icon = item.icon;
                 return (
                   <Link
