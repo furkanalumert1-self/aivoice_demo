@@ -5,7 +5,8 @@ import { callLogs } from "@/db/schema";
 import { desc } from "drizzle-orm";
 import { Phone, AlertTriangle, RefreshCw } from "lucide-react";
 import { CallsList, type CallRow } from "@/components/calls-list";
-import { SyncCallsButton } from "@/components/sync-calls-button";
+import { getLocale } from "@/lib/locale";
+import { t } from "@/lib/i18n";
 
 type ErrorKind = "migration" | "connection" | "unknown";
 
@@ -17,6 +18,7 @@ function classifyError(err: unknown): ErrorKind {
 }
 
 export default async function CallsPage() {
+  const locale = await getLocale();
   let callRecords: CallRow[] = [];
   let errorKind: ErrorKind | null = null;
 
@@ -47,10 +49,9 @@ export default async function CallsPage() {
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">Çağrı Kayıtları</h1>
-          <p className="mt-0.5 text-sm text-gray-500">AI asistan tarafından işlenen tüm çağrılar · satıra tıkla → transkript</p>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">{t(locale, "callRecordsTitle")}</h1>
+          <p className="mt-0.5 text-sm text-gray-500">{t(locale, "callRecordsSub")}</p>
         </div>
-        <SyncCallsButton />
       </div>
 
       {/* Errors */}
@@ -59,9 +60,9 @@ export default async function CallsPage() {
           <div className="flex items-start gap-3">
             <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-semibold text-amber-900">Veritabanı şeması güncellenmesi gerekiyor</p>
+              <p className="text-sm font-semibold text-amber-900">{t(locale, "dbMigrationError")}</p>
               <p className="text-sm text-amber-800 mt-0.5">
-                <code className="font-mono text-xs bg-amber-100 px-1.5 py-0.5 rounded">call_logs</code> tablosu veya kolonu eksik.
+                <code className="font-mono text-xs bg-amber-100 px-1.5 py-0.5 rounded">call_logs</code>
               </p>
             </div>
           </div>
@@ -71,7 +72,7 @@ export default async function CallsPage() {
       {errorKind === "connection" && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 flex items-center gap-3">
           <RefreshCw className="h-4 w-4 text-red-500 shrink-0" />
-          <p className="text-sm text-red-800">Veritabanı bağlantısı kurulamadı. <code className="font-mono text-xs">DATABASE_URL</code> env değişkenini kontrol edin.</p>
+          <p className="text-sm text-red-800">{t(locale, "dbConnectionError")} <code className="font-mono text-xs">DATABASE_URL</code></p>
         </div>
       )}
 
@@ -80,7 +81,7 @@ export default async function CallsPage() {
         {callRecords.length === 0 && !errorKind ? (
           <div className="flex flex-col items-center justify-center py-20">
             <Phone className="h-10 w-10 mb-3 text-gray-200" />
-            <p className="text-sm text-gray-400">Henüz çağrı kaydı bulunmuyor</p>
+            <p className="text-sm text-gray-400">{t(locale, "noCallsFound")}</p>
           </div>
         ) : (
           <CallsList calls={callRecords} />

@@ -2,8 +2,10 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Stethoscope, Clock, Plus, Pencil, Trash2, X, Check, AlertCircle } from "lucide-react";
+import { Stethoscope, Clock, Plus, Pencil, Trash2, X, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/components/language-provider";
+import { t, type Locale } from "@/lib/i18n";
 
 type WorkingHours = Record<string, string | null>;
 
@@ -17,14 +19,30 @@ type Doctor = {
 };
 
 const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
-const DAY_LABELS: Record<string, string> = {
-  mon: "Pazartesi", tue: "Salı", wed: "Çarşamba",
-  thu: "Perşembe", fri: "Cuma", sat: "Cumartesi", sun: "Pazar",
-};
-const DAY_SHORT: Record<string, string> = {
-  mon: "Pzt", tue: "Sal", wed: "Çar",
-  thu: "Per", fri: "Cum", sat: "Cmt", sun: "Paz",
-};
+
+function getDayLabels(locale: Locale) {
+  return {
+    mon: t(locale, "dayMon"),
+    tue: t(locale, "dayTue"),
+    wed: t(locale, "dayWed"),
+    thu: t(locale, "dayThu"),
+    fri: t(locale, "dayFri"),
+    sat: t(locale, "daySat"),
+    sun: t(locale, "daySun"),
+  };
+}
+
+function getDayShort(locale: Locale) {
+  return {
+    mon: t(locale, "dayMonShort"),
+    tue: t(locale, "dayTueShort"),
+    wed: t(locale, "dayWedShort"),
+    thu: t(locale, "dayThuShort"),
+    fri: t(locale, "dayFriShort"),
+    sat: t(locale, "daySatShort"),
+    sun: t(locale, "daySunShort"),
+  };
+}
 
 type FormState = {
   fullName: string;
@@ -65,20 +83,23 @@ function DoctorModal({
   doctor,
   onClose,
   onSaved,
+  locale,
 }: {
   doctor: Doctor | null;
   onClose: () => void;
   onSaved: () => void;
+  locale: Locale;
 }) {
   const [form, setForm] = useState<FormState>(doctor ? doctorToForm(doctor) : emptyForm());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isEdit = !!doctor;
+  const dayLabels = getDayLabels(locale);
 
   const save = async () => {
     if (!form.fullName.trim() || !form.specialization.trim()) {
-      setError("Ad ve uzmanlık alanı gerekli");
+      setError(t(locale, "fieldRequired"));
       return;
     }
     setSaving(true);
@@ -100,11 +121,11 @@ function DoctorModal({
       );
       if (!res.ok) {
         const { error: msg } = await res.json().catch(() => ({}));
-        throw new Error(msg ?? "Kayıt başarısız");
+        throw new Error(msg ?? t(locale, "dbError"));
       }
       onSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Hata oluştu");
+      setError(e instanceof Error ? e.message : t(locale, "dbError"));
     } finally {
       setSaving(false);
     }
@@ -120,7 +141,7 @@ function DoctorModal({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-[15px] font-semibold text-gray-900">
-            {isEdit ? "Doktoru Düzenle" : "Yeni Doktor Ekle"}
+            {isEdit ? t(locale, "editDoctor") : t(locale, "addDoctorModal")}
           </h2>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 transition-colors">
             <X className="h-4 w-4 text-gray-500" />
@@ -138,7 +159,7 @@ function DoctorModal({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Ad Soyad *</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1">{t(locale, "fullName")} *</label>
               <input
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 value={form.fullName}
@@ -147,7 +168,7 @@ function DoctorModal({
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Uzmanlık Alanı *</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1">{t(locale, "specializationLabel")} *</label>
               <input
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                 value={form.specialization}
@@ -159,7 +180,7 @@ function DoctorModal({
 
           {/* Working hours */}
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-2">Çalışma Saatleri</label>
+            <label className="block text-xs font-medium text-gray-500 mb-2">{t(locale, "workingHours")}</label>
             <div className="space-y-2">
               {DAY_KEYS.map((k) => (
                 <div key={k} className="flex items-center gap-3">
@@ -172,13 +193,13 @@ function DoctorModal({
                       }))
                     }
                     className={cn(
-                      "flex w-20 shrink-0 items-center justify-center rounded-lg py-1 text-xs font-medium transition-colors",
+                      "flex w-24 shrink-0 items-center justify-center rounded-lg py-1 text-xs font-medium transition-colors",
                       form.hours[k].enabled
                         ? "bg-teal-500 text-white"
                         : "bg-gray-100 text-gray-400"
                     )}
                   >
-                    {DAY_LABELS[k]}
+                    {dayLabels[k]}
                   </button>
                   {form.hours[k].enabled && (
                     <input
@@ -200,7 +221,7 @@ function DoctorModal({
 
           {/* Active toggle */}
           <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-700">Aktif</span>
+            <span className="text-sm text-gray-700">{t(locale, "active")}</span>
             <button
               type="button"
               onClick={() => setForm((f) => ({ ...f, active: !f.active }))}
@@ -225,14 +246,14 @@ function DoctorModal({
             onClick={onClose}
             className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
           >
-            İptal
+            {t(locale, "cancelBtn")}
           </button>
           <button
             onClick={save}
             disabled={saving}
             className="px-4 py-2 rounded-lg text-sm font-medium bg-teal-600 text-white hover:bg-teal-700 transition-colors disabled:opacity-60"
           >
-            {saving ? "Kaydediliyor…" : isEdit ? "Güncelle" : "Ekle"}
+            {saving ? t(locale, "savingBtn") : isEdit ? t(locale, "updateBtn") : t(locale, "addBtn")}
           </button>
         </div>
       </div>
@@ -245,10 +266,12 @@ function DeleteConfirm({
   doctor,
   onClose,
   onDeleted,
+  locale,
 }: {
   doctor: Doctor;
   onClose: () => void;
   onDeleted: () => void;
+  locale: Locale;
 }) {
   const [loading, setLoading] = useState(false);
 
@@ -266,16 +289,16 @@ function DeleteConfirm({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
       <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl animate-float-up">
-        <p className="text-[15px] font-semibold text-gray-900 mb-2">Doktoru Sil</p>
+        <p className="text-[15px] font-semibold text-gray-900 mb-2">{t(locale, "deleteDoctorTitle")}</p>
         <p className="text-sm text-gray-500 mb-6">
-          <strong>{doctor.fullName}</strong> silinecek. Bu işlem geri alınamaz.
+          <strong>{doctor.fullName}</strong> {t(locale, "deleteWarning")}
         </p>
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">
-            İptal
+            {t(locale, "cancelBtn")}
           </button>
           <button onClick={confirm} disabled={loading} className="px-4 py-2 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-60">
-            {loading ? "Siliniyor…" : "Sil"}
+            {loading ? t(locale, "deletingBtn") : t(locale, "deleteBtn")}
           </button>
         </div>
       </div>
@@ -286,9 +309,11 @@ function DeleteConfirm({
 // ── Main list component ────────────────────────────────────────────────────────
 export default function DoctorsList({ initial }: { initial: Doctor[] }) {
   const router = useRouter();
+  const { locale } = useLanguage();
   const [doctors, setDoctors] = useState<Doctor[]>(initial);
   const [modal, setModal] = useState<{ mode: "add" | "edit"; doctor: Doctor | null } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Doctor | null>(null);
+  const dayShort = getDayShort(locale);
 
   const refresh = useCallback(async () => {
     try {
@@ -313,15 +338,15 @@ export default function DoctorsList({ initial }: { initial: Doctor[] }) {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">Doktor / Takvim</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Klinik doktorları ve takvimleri</p>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">{t(locale, "doctors")}</h1>
+          <p className="mt-0.5 text-sm text-gray-500">{t(locale, "doctorsSub")}</p>
         </div>
         <button
           onClick={() => setModal({ mode: "add", doctor: null })}
           className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-teal-700 transition-colors"
         >
           <Plus className="h-4 w-4" />
-          Yeni Doktor
+          {t(locale, "addDoctor")}
         </button>
       </div>
 
@@ -329,7 +354,7 @@ export default function DoctorsList({ initial }: { initial: Doctor[] }) {
       {doctors.length === 0 ? (
         <div className="rounded-2xl border border-gray-100 bg-white p-12 text-center">
           <Stethoscope className="h-10 w-10 mx-auto mb-3 text-gray-200" />
-          <p className="text-sm text-gray-400">Henüz doktor kaydı yok</p>
+          <p className="text-sm text-gray-400">{t(locale, "noDoctors")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -370,7 +395,7 @@ export default function DoctorsList({ initial }: { initial: Doctor[] }) {
 
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-500 text-xs">Durum</span>
+                    <span className="text-gray-500 text-xs">{t(locale, "colStatus")}</span>
                     <span
                       className={cn(
                         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
@@ -380,7 +405,7 @@ export default function DoctorsList({ initial }: { initial: Doctor[] }) {
                       )}
                     >
                       <span className={cn("h-1.5 w-1.5 rounded-full", doc.active ? "bg-teal-500" : "bg-red-500")} />
-                      {doc.active ? "Aktif" : "Pasif"}
+                      {doc.active ? t(locale, "active") : t(locale, "doctorInactive")}
                     </span>
                   </div>
 
@@ -388,12 +413,12 @@ export default function DoctorsList({ initial }: { initial: Doctor[] }) {
                     <div>
                       <div className="flex items-center gap-1 text-gray-400 text-xs mb-1">
                         <Clock className="h-3 w-3" />
-                        Çalışma Saatleri
+                        {t(locale, "workingHours")}
                       </div>
                       <div className="space-y-0.5 pl-4">
                         {activeDays.map(([day, hours]) => (
                           <div key={day} className="flex justify-between text-[11px]">
-                            <span className="text-gray-400 w-8">{DAY_SHORT[day] ?? day}</span>
+                            <span className="text-gray-400 w-8">{dayShort[day as keyof typeof dayShort] ?? day}</span>
                             <span className="text-gray-700 tnum">{hours}</span>
                           </div>
                         ))}
@@ -413,6 +438,7 @@ export default function DoctorsList({ initial }: { initial: Doctor[] }) {
           doctor={modal.mode === "edit" ? modal.doctor : null}
           onClose={() => setModal(null)}
           onSaved={onSaved}
+          locale={locale}
         />
       )}
       {deleteTarget && (
@@ -420,6 +446,7 @@ export default function DoctorsList({ initial }: { initial: Doctor[] }) {
           doctor={deleteTarget}
           onClose={() => setDeleteTarget(null)}
           onDeleted={onDeleted}
+          locale={locale}
         />
       )}
     </>

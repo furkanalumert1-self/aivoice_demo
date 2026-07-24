@@ -8,7 +8,7 @@ import {
   Settings, LifeBuoy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useLanguage, LanguageProvider } from "@/components/language-provider";
+import { useLanguage } from "@/components/language-provider";
 import { LOCALES, t } from "@/lib/i18n";
 
 function SidebarInner() {
@@ -137,9 +137,5 @@ function SidebarInner() {
 }
 
 export function Sidebar() {
-  return (
-    <LanguageProvider>
-      <SidebarInner />
-    </LanguageProvider>
-  );
+  return <SidebarInner />;
 }

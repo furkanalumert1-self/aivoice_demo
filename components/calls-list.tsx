@@ -6,14 +6,18 @@ import { AudioPlayer } from "@/components/audio-player";
 import { formatDateTime, formatDuration } from "@/lib/utils";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/components/language-provider";
+import { t, type Locale } from "@/lib/i18n";
 
-const intentConfig: Record<string, { label: string; color: string; bg: string; dot: string }> = {
-  randevu_alma:  { label: "Randevu Alma",  color: "text-teal-700",  bg: "bg-teal-50",   dot: "bg-teal-500"   },
-  randevu_iptal: { label: "Randevu İptal", color: "text-red-700",   bg: "bg-red-50",    dot: "bg-red-500"    },
-  bilgi:         { label: "Bilgi",         color: "text-blue-700",  bg: "bg-blue-50",   dot: "bg-blue-500"   },
-  geri_arama:    { label: "Geri Arama",    color: "text-amber-700", bg: "bg-amber-50",  dot: "bg-amber-500"  },
-  diger:         { label: "Diğer",         color: "text-gray-600",  bg: "bg-gray-100",  dot: "bg-gray-400"   },
-};
+function getIntentConfig(locale: Locale) {
+  return {
+    randevu_alma:  { label: t(locale, "intentAppointment"), color: "text-teal-700",  bg: "bg-teal-50",   dot: "bg-teal-500"   },
+    randevu_iptal: { label: t(locale, "intentCancel"),      color: "text-red-700",   bg: "bg-red-50",    dot: "bg-red-500"    },
+    bilgi:         { label: t(locale, "intentInfo"),        color: "text-blue-700",  bg: "bg-blue-50",   dot: "bg-blue-500"   },
+    geri_arama:    { label: t(locale, "intentCallback"),    color: "text-amber-700", bg: "bg-amber-50",  dot: "bg-amber-500"  },
+    diger:         { label: t(locale, "intentOther"),       color: "text-gray-600",  bg: "bg-gray-100",  dot: "bg-gray-400"   },
+  };
+}
 
 export type CallRow = {
   id: string;
@@ -30,13 +34,15 @@ export type CallRow = {
 };
 
 export function CallsList({ calls }: { calls: CallRow[] }) {
+  const { locale } = useLanguage();
   const [open, setOpen] = useState<CallRow | null>(null);
+  const intentConfig = getIntentConfig(locale);
 
   if (calls.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <Phone className="h-10 w-10 mb-3 text-gray-200" />
-        <p className="text-[13px] text-gray-400">Henüz çağrı kaydı bulunmuyor</p>
+        <p className="text-[13px] text-gray-400">{t(locale, "noCallsFound")}</p>
       </div>
     );
   }
@@ -47,14 +53,14 @@ export function CallsList({ calls }: { calls: CallRow[] }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50/70">
-              {["Telefon", "Tarih", "Süre", "Özet", "Niyet", ""].map((h) => (
-                <th key={h} className="px-5 py-3 text-left label-mono text-gray-400">{h}</th>
+              {[t(locale, "colPhone"), t(locale, "colDate"), t(locale, "colDuration"), t(locale, "colSummary"), t(locale, "colIntent"), ""].map((h, i) => (
+                <th key={i} className="px-5 py-3 text-left label-mono text-gray-400">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
             {calls.map((call) => {
-              const intent = intentConfig[call.intent ?? "diger"] ?? intentConfig.diger;
+              const intent = intentConfig[call.intent as keyof typeof intentConfig] ?? intentConfig.diger;
               return (
                 <tr
                   key={call.id}
@@ -66,7 +72,7 @@ export function CallsList({ calls }: { calls: CallRow[] }) {
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-50 group-hover:bg-teal-100 transition-colors">
                         <Phone className="h-3.5 w-3.5 text-teal-500" />
                       </div>
-                      <span className="font-medium text-gray-900 tnum">{call.callerNumber || "Bilinmiyor"}</span>
+                      <span className="font-medium text-gray-900 tnum">{call.callerNumber || t(locale, "unknown")}</span>
                     </div>
                   </td>
                   <td className="px-5 py-3.5 text-gray-500 tnum whitespace-nowrap text-[12px]">{formatDateTime(call.createdAt)}</td>
@@ -88,7 +94,7 @@ export function CallsList({ calls }: { calls: CallRow[] }) {
                       onClick={(e) => e.stopPropagation()}
                       className="text-[11px] text-teal-600 hover:text-teal-700 font-medium"
                     >
-                      Detay →
+                      {t(locale, "detail")}
                     </Link>
                   </td>
                 </tr>
@@ -98,11 +104,11 @@ export function CallsList({ calls }: { calls: CallRow[] }) {
         </table>
       </div>
 
-      {/* Transcript Drawer — Vox style */}
+      {/* Transcript Drawer */}
       {open && (
         <div className="fixed inset-0 z-50 flex justify-end">
           <button
-            aria-label="Kapat"
+            aria-label={t(locale, "drawerClose")}
             onClick={() => setOpen(null)}
             className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
           />
@@ -113,11 +119,11 @@ export function CallsList({ calls }: { calls: CallRow[] }) {
                 <Phone className="h-4.5 w-4.5 text-teal-500" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[14px] font-semibold text-gray-900 truncate tnum">{open.callerNumber ?? "Bilinmiyor"}</p>
+                <p className="text-[14px] font-semibold text-gray-900 truncate tnum">{open.callerNumber ?? t(locale, "unknown")}</p>
                 <p className="text-[11px] text-gray-400 tnum">{formatDateTime(open.createdAt)}</p>
               </div>
               {open.intent && (() => {
-                const cfg = intentConfig[open.intent] ?? intentConfig.diger;
+                const cfg = intentConfig[open.intent as keyof typeof intentConfig] ?? intentConfig.diger;
                 return (
                   <span className={cn("inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold shrink-0", cfg.bg, cfg.color)}>
                     <span className={cn("h-1.5 w-1.5 rounded-full", cfg.dot)} />
@@ -141,7 +147,7 @@ export function CallsList({ calls }: { calls: CallRow[] }) {
               )}
               {open.callStatus && (
                 <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", open.callStatus === "completed" ? "bg-teal-50 text-teal-700" : "bg-red-50 text-red-700")}>
-                  {open.callStatus === "completed" ? "Tamamlandı" : open.callStatus}
+                  {open.callStatus === "completed" ? t(locale, "completed") : open.callStatus}
                 </span>
               )}
             </div>
@@ -149,7 +155,7 @@ export function CallsList({ calls }: { calls: CallRow[] }) {
             {/* Audio player */}
             {open.recordingUrl && (
               <div className="border-b border-gray-100 px-5 py-3">
-                <p className="label-mono text-gray-400 mb-2">Kayıt</p>
+                <p className="label-mono text-gray-400 mb-2">{t(locale, "recording")}</p>
                 <AudioPlayer
                   src={
                     open.vapiCallId
@@ -163,7 +169,7 @@ export function CallsList({ calls }: { calls: CallRow[] }) {
             {/* Summary */}
             {open.summary && (
               <div className="border-b border-gray-100 px-5 py-4">
-                <p className="label-mono text-gray-400 mb-2">Özet</p>
+                <p className="label-mono text-gray-400 mb-2">{t(locale, "colSummary")}</p>
                 <p className="text-[13px] text-gray-700 leading-relaxed">{open.summary}</p>
               </div>
             )}
@@ -174,7 +180,7 @@ export function CallsList({ calls }: { calls: CallRow[] }) {
                 <>
                   <div className="flex items-center gap-2 mb-3">
                     <FileText className="h-3.5 w-3.5 text-gray-400" />
-                    <p className="label-mono text-gray-400">Transkript</p>
+                    <p className="label-mono text-gray-400">{t(locale, "transcript")}</p>
                   </div>
                   <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
                     <p className="text-[12.5px] text-gray-700 leading-relaxed whitespace-pre-wrap">{open.transcript}</p>
@@ -183,7 +189,7 @@ export function CallsList({ calls }: { calls: CallRow[] }) {
               ) : (
                 <div className="flex flex-col items-center justify-center h-full py-10 text-gray-400">
                   <FileText className="h-8 w-8 mb-2 opacity-30" />
-                  <p className="text-[13px]">Transkript mevcut değil</p>
+                  <p className="text-[13px]">{t(locale, "transcriptUnavailable")}</p>
                 </div>
               )}
             </div>
@@ -194,7 +200,7 @@ export function CallsList({ calls }: { calls: CallRow[] }) {
                 href={`/admin/calls/${open.id}`}
                 className="block w-full rounded-lg bg-teal-600 px-4 py-2 text-center text-[13px] font-semibold text-white hover:bg-teal-700 transition-colors"
               >
-                Detaylı görünüm →
+                {t(locale, "detailedView")}
               </Link>
             </div>
           </div>
