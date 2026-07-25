@@ -116,8 +116,8 @@ export async function POST(req: NextRequest) {
       const alternatives = allSlots.slice(0, 4).join(", ");
       resultMessage = `${displayName} için ${targetDate} tarihinde saat ${preferredTime} dolu. En yakın müsait saatler: ${alternatives}. Doktor adı: ${displayName}.`;
     } else {
-      // No preference — show morning and afternoon options
-      const slotList = allSlots.slice(0, 8).join(", ");
+      // No preference — offer 3 options only (voice-friendly)
+      const slotList = allSlots.slice(0, 3).join(", ");
       resultMessage = `${displayName} ${targetDate} tarihinde müsait saatler: ${slotList}. Doktor adı: ${displayName}.`;
     }
 
