@@ -34,11 +34,9 @@ export async function POST(req: NextRequest) {
         .returning();
       cancelled = result;
     } else if (phone) {
-      // Suffix match: use as many digits as given (up to 9) so partially-heard
-      // numbers from STT still match the stored full number
+      // CONTAINS match: stored phone must contain the given digits as a substring
       const cleanedDigits = phone.replace(/[^0-9]/g, "");
-      const suffixLen = Math.min(cleanedDigits.length, 9);
-      const suffix = cleanedDigits.slice(-suffixLen);
+      const matchDigits = cleanedDigits.slice(0, 10);
       const [result] = await db
         .update(appointments)
         .set({ status: "iptal" })
@@ -46,7 +44,7 @@ export async function POST(req: NextRequest) {
           id = (
             SELECT id FROM appointments
             WHERE REGEXP_REPLACE(COALESCE(patient_phone, ''), '[^0-9]', '', 'g')
-                  LIKE ${"%" + suffix}
+                  LIKE ${"%" + matchDigits + "%"}
               AND status != 'iptal'
             ORDER BY created_at DESC
             LIMIT 1
@@ -54,7 +52,7 @@ export async function POST(req: NextRequest) {
         `)
         .returning();
       cancelled = result ?? null;
-      console.log("[CANCEL] phone:", phone, "| suffix:", suffix, "| found:", cancelled?.id ?? "none");
+      console.log("[CANCEL] phone:", phone, "| digits:", matchDigits, "| found:", cancelled?.id ?? "none");
     }
 
     if (!cancelled) {

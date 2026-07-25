@@ -50,12 +50,12 @@ export async function POST(req: NextRequest) {
       rescheduled = result ?? null;
     }
 
-    // 2. Lookup by phone — suffix match using as many digits as given (up to 9)
-    // This handles country-code prefixes AND partially-heard numbers from STT
+    // 2. Lookup by phone — CONTAINS match on cleaned digits (up to 9 chars)
+    // STT may give partial numbers; check if stored phone contains those digits
+    // as a substring (handles both prefix and suffix partial matches)
     if (!rescheduled && phone) {
       const cleanedDigits = phone.replace(/[^0-9]/g, "");
-      const suffixLen = Math.min(cleanedDigits.length, 9);
-      const suffix = cleanedDigits.slice(-suffixLen);
+      const matchDigits = cleanedDigits.slice(0, 10); // cap at 10 to avoid over-broad matches
       const [result] = await db
         .update(appointments)
         .set(updateData)
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
           id = (
             SELECT id FROM appointments
             WHERE REGEXP_REPLACE(COALESCE(patient_phone, ''), '[^0-9]', '', 'g')
-                  LIKE ${"%" + suffix}
+                  LIKE ${"%" + matchDigits + "%"}
               AND status != 'iptal'
             ORDER BY created_at DESC
             LIMIT 1
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
         `)
         .returning();
       rescheduled = result ?? null;
-      console.log("[RESCHEDULE] phone:", phone, "| suffix:", suffix, "| found:", rescheduled?.id ?? "none");
+      console.log("[RESCHEDULE] phone:", phone, "| digits:", matchDigits, "| found:", rescheduled?.id ?? "none");
     }
 
     // 3. Fallback: lookup by patient name (AI often knows the name from the conversation)
