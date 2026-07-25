@@ -218,10 +218,15 @@ export async function POST(req: NextRequest) {
     // Tool calls: handle inline or proxy to the appropriate route handler
     if (messageType === "tool-calls" || messageType === "function-call") {
       const TOOL_ROUTES: Record<string, string> = {
+        // Turkish assistant tool names
         checkavailability:      "/api/vapi/availability",
         cancel_appointment:     "/api/vapi/cancel",
         reschedule_appointment: "/api/vapi/reschedule",
         createCallbackRequest:  "/api/vapi/callback",
+        // Italian assistant tool names (VAPI dashboard)
+        check_availability:     "/api/vapi/availability",
+        reschedule:             "/api/vapi/reschedule",
+        callback:               "/api/vapi/callback",
       };
 
       // Extract function name and params from all known VAPI payload shapes
