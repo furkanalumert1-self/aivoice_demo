@@ -47,17 +47,24 @@ export async function POST(req: NextRequest) {
         .returning();
       rescheduled = result;
     } else if (phone) {
+      // Match by last 9 digits of phone to handle country-code variations (+90, 0, etc.)
+      // Update only the most recent non-cancelled appointment for that phone
       const [result] = await db
         .update(appointments)
         .set(updateData)
         .where(sql`
-          REGEXP_REPLACE(COALESCE(patient_phone, phone, ''), '[^0-9]', '', 'g')
-            LIKE REGEXP_REPLACE(${phone}, '[^0-9]', '', 'g') || '%'
-          AND status != 'iptal'
+          id = (
+            SELECT id FROM appointments
+            WHERE RIGHT(REGEXP_REPLACE(COALESCE(patient_phone, ''), '[^0-9]', '', 'g'), 9)
+                  = RIGHT(REGEXP_REPLACE(${phone}, '[^0-9]', '', 'g'), 9)
+              AND status != 'iptal'
+            ORDER BY created_at DESC
+            LIMIT 1
+          )
         `)
         .returning();
-      rescheduled = result;
-      console.log("[RESCHEDULE] phone received:", phone, "| found:", rescheduled?.id ?? "none");
+      rescheduled = result ?? null;
+      console.log("[RESCHEDULE] phone received:", phone, "| cleaned last-9:", phone.replace(/[^0-9]/g, "").slice(-9), "| found:", rescheduled?.id ?? "none");
     }
 
     if (!rescheduled) {

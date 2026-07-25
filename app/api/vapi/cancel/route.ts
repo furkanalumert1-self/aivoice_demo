@@ -36,17 +36,23 @@ export async function POST(req: NextRequest) {
     } else if (phone) {
       // Normalize digits from both stored phone and lookup phone, then prefix-match.
       // Handles partial readbacks and format differences (spaces, dashes, etc.)
+      // Match by last 9 digits; cancel only the most recent active appointment
       const [result] = await db
         .update(appointments)
         .set({ status: "iptal" })
         .where(sql`
-          REGEXP_REPLACE(COALESCE(patient_phone, phone, ''), '[^0-9]', '', 'g')
-            LIKE REGEXP_REPLACE(${phone}, '[^0-9]', '', 'g') || '%'
-          AND status != 'iptal'
+          id = (
+            SELECT id FROM appointments
+            WHERE RIGHT(REGEXP_REPLACE(COALESCE(patient_phone, ''), '[^0-9]', '', 'g'), 9)
+                  = RIGHT(REGEXP_REPLACE(${phone}, '[^0-9]', '', 'g'), 9)
+              AND status != 'iptal'
+            ORDER BY created_at DESC
+            LIMIT 1
+          )
         `)
         .returning();
-      cancelled = result;
-      console.log("[CANCEL] phone received:", phone, "| found:", cancelled?.id ?? "none");
+      cancelled = result ?? null;
+      console.log("[CANCEL] phone received:", phone, "| cleaned last-9:", phone.replace(/[^0-9]/g, "").slice(-9), "| found:", cancelled?.id ?? "none");
     }
 
     if (!cancelled) {
