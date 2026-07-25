@@ -34,17 +34,19 @@ export async function POST(req: NextRequest) {
         .returning();
       cancelled = result;
     } else if (phone) {
-      // Normalize digits from both stored phone and lookup phone, then prefix-match.
-      // Handles partial readbacks and format differences (spaces, dashes, etc.)
-      // Match by last 9 digits; cancel only the most recent active appointment
+      // Suffix match: use as many digits as given (up to 9) so partially-heard
+      // numbers from STT still match the stored full number
+      const cleanedDigits = phone.replace(/[^0-9]/g, "");
+      const suffixLen = Math.min(cleanedDigits.length, 9);
+      const suffix = cleanedDigits.slice(-suffixLen);
       const [result] = await db
         .update(appointments)
         .set({ status: "iptal" })
         .where(sql`
           id = (
             SELECT id FROM appointments
-            WHERE RIGHT(REGEXP_REPLACE(COALESCE(patient_phone, ''), '[^0-9]', '', 'g'), 9)
-                  = RIGHT(REGEXP_REPLACE(${phone}, '[^0-9]', '', 'g'), 9)
+            WHERE REGEXP_REPLACE(COALESCE(patient_phone, ''), '[^0-9]', '', 'g')
+                  LIKE ${"%" + suffix}
               AND status != 'iptal'
             ORDER BY created_at DESC
             LIMIT 1
@@ -52,7 +54,7 @@ export async function POST(req: NextRequest) {
         `)
         .returning();
       cancelled = result ?? null;
-      console.log("[CANCEL] phone received:", phone, "| cleaned last-9:", phone.replace(/[^0-9]/g, "").slice(-9), "| found:", cancelled?.id ?? "none");
+      console.log("[CANCEL] phone:", phone, "| suffix:", suffix, "| found:", cancelled?.id ?? "none");
     }
 
     if (!cancelled) {

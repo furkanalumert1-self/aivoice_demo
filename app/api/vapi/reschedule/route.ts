@@ -50,17 +50,20 @@ export async function POST(req: NextRequest) {
       rescheduled = result ?? null;
     }
 
-    // 2. Lookup by last-9-digit phone match (handles +90, 0, no-prefix variations)
+    // 2. Lookup by phone — suffix match using as many digits as given (up to 9)
+    // This handles country-code prefixes AND partially-heard numbers from STT
     if (!rescheduled && phone) {
-      const cleaned9 = phone.replace(/[^0-9]/g, "").slice(-9);
+      const cleanedDigits = phone.replace(/[^0-9]/g, "");
+      const suffixLen = Math.min(cleanedDigits.length, 9);
+      const suffix = cleanedDigits.slice(-suffixLen);
       const [result] = await db
         .update(appointments)
         .set(updateData)
         .where(sql`
           id = (
             SELECT id FROM appointments
-            WHERE RIGHT(REGEXP_REPLACE(COALESCE(patient_phone, ''), '[^0-9]', '', 'g'), 9)
-                  = ${cleaned9}
+            WHERE REGEXP_REPLACE(COALESCE(patient_phone, ''), '[^0-9]', '', 'g')
+                  LIKE ${"%" + suffix}
               AND status != 'iptal'
             ORDER BY created_at DESC
             LIMIT 1
@@ -68,7 +71,7 @@ export async function POST(req: NextRequest) {
         `)
         .returning();
       rescheduled = result ?? null;
-      console.log("[RESCHEDULE] phone:", phone, "| last-9:", cleaned9, "| found:", rescheduled?.id ?? "none");
+      console.log("[RESCHEDULE] phone:", phone, "| suffix:", suffix, "| found:", rescheduled?.id ?? "none");
     }
 
     // 3. Fallback: lookup by patient name (AI often knows the name from the conversation)
