@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { appointments, aiActions } from "@/db/schema";
-import { eq, or, sql } from "drizzle-orm";
+import { eq, sql, ilike } from "drizzle-orm";
 import { extractToolCall } from "@/lib/vapi";
 
 export async function POST(req: NextRequest) {
@@ -13,6 +13,7 @@ export async function POST(req: NextRequest) {
 
     const appointmentId = params.appointmentId ?? params.appointment_id ?? params.id ?? null;
     const phone = params.phone ?? params.patientPhone ?? params.patient_phone ?? params.phoneNumber ?? null;
+    const patientName = params.patientName ?? params.patient_name ?? params.name ?? null;
     const newDate = params.newDate ?? params.new_date ?? params.date ?? params.appointmentDate ?? null;
     const newTime = params.newTime ?? params.new_time ?? params.time ?? params.appointmentTime ?? null;
     const doctorName = params.doctorName ?? params.doctor_name ?? params.doctor ?? null;
@@ -39,16 +40,19 @@ export async function POST(req: NextRequest) {
       ...(doctorName ? { doctorName } : {}),
     };
 
+    // 1. Lookup by explicit appointmentId
     if (appointmentId) {
       const [result] = await db
         .update(appointments)
         .set(updateData)
         .where(eq(appointments.id, appointmentId))
         .returning();
-      rescheduled = result;
-    } else if (phone) {
-      // Match by last 9 digits of phone to handle country-code variations (+90, 0, etc.)
-      // Update only the most recent non-cancelled appointment for that phone
+      rescheduled = result ?? null;
+    }
+
+    // 2. Lookup by last-9-digit phone match (handles +90, 0, no-prefix variations)
+    if (!rescheduled && phone) {
+      const cleaned9 = phone.replace(/[^0-9]/g, "").slice(-9);
       const [result] = await db
         .update(appointments)
         .set(updateData)
@@ -56,7 +60,7 @@ export async function POST(req: NextRequest) {
           id = (
             SELECT id FROM appointments
             WHERE RIGHT(REGEXP_REPLACE(COALESCE(patient_phone, ''), '[^0-9]', '', 'g'), 9)
-                  = RIGHT(REGEXP_REPLACE(${phone}, '[^0-9]', '', 'g'), 9)
+                  = ${cleaned9}
               AND status != 'iptal'
             ORDER BY created_at DESC
             LIMIT 1
@@ -64,7 +68,26 @@ export async function POST(req: NextRequest) {
         `)
         .returning();
       rescheduled = result ?? null;
-      console.log("[RESCHEDULE] phone received:", phone, "| cleaned last-9:", phone.replace(/[^0-9]/g, "").slice(-9), "| found:", rescheduled?.id ?? "none");
+      console.log("[RESCHEDULE] phone:", phone, "| last-9:", cleaned9, "| found:", rescheduled?.id ?? "none");
+    }
+
+    // 3. Fallback: lookup by patient name (AI often knows the name from the conversation)
+    if (!rescheduled && patientName) {
+      const [result] = await db
+        .update(appointments)
+        .set(updateData)
+        .where(sql`
+          id = (
+            SELECT id FROM appointments
+            WHERE LOWER(patient_name) LIKE LOWER(${`%${patientName}%`})
+              AND status != 'iptal'
+            ORDER BY created_at DESC
+            LIMIT 1
+          )
+        `)
+        .returning();
+      rescheduled = result ?? null;
+      console.log("[RESCHEDULE] patientName fallback:", patientName, "| found:", rescheduled?.id ?? "none");
     }
 
     if (!rescheduled) {
@@ -72,7 +95,7 @@ export async function POST(req: NextRequest) {
         results: [
           {
             toolCallId,
-            result: "Randevu bulunamadı. Lütfen telefon numaranızı veya randevu bilgilerinizi kontrol edin.",
+            result: "Appuntamento non trovato. Verifichi il numero di telefono e riprovi.",
           },
         ],
       });
@@ -81,7 +104,7 @@ export async function POST(req: NextRequest) {
     try {
       await db.insert(aiActions).values({
         actionType: "reschedule",
-        payload: { appointmentId: rescheduled.id, phone, newDate: datePart, newTime },
+        payload: { appointmentId: rescheduled.id, phone, patientName, newDate: datePart, newTime },
         result: `Randevu ${datePart} ${newTime}'e taşındı.`,
       });
     } catch { /* ignore */ }
@@ -90,14 +113,14 @@ export async function POST(req: NextRequest) {
       results: [
         {
           toolCallId,
-          result: `Randevunuz ${datePart} tarihinde saat ${newTime} için başarıyla yeniden planlandı.`,
+          result: `L'appuntamento è stato aggiornato a ${datePart} alle ${newTime}.`,
         },
       ],
     });
   } catch (error) {
     console.error("Reschedule error:", error);
     return NextResponse.json({
-      results: [{ toolCallId: "unknown", result: "Yeniden planlama sırasında bir hata oluştu. Lütfen tekrar deneyin." }],
+      results: [{ toolCallId: "unknown", result: "Errore durante la ripianificazione. Riprovi." }],
     });
   }
 }
